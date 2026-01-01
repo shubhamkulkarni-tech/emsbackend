@@ -41,7 +41,11 @@ const taskSchema = new mongoose.Schema({
   },
   status: {
     type: String,
+<<<<<<< HEAD
     enum: ["Not Started", "In Progress", "On Hold", "Completed", "In Review", "Pending", "Reverted"],
+=======
+    enum: ["Not Started", "In Progress", "On Hold", "Completed", "In Review", "Pending", "Reverted"], // <-- ADDED "Reverted"
+>>>>>>> 69a1868ebc54e916510eeccf928179d6600d558d
     default: "Not Started"
   },
   category: {
@@ -57,7 +61,11 @@ const taskSchema = new mongoose.Schema({
   },
   progressStatus: {
     type: String,
+<<<<<<< HEAD
     enum: ["Not Started", "Pending", "In Review", "Completed", "Reverted"],
+=======
+    enum: ["Not Started", "Pending", "In Review", "Completed", "Reverted"], // <-- ADDED "Reverted"
+>>>>>>> 69a1868ebc54e916510eeccf928179d6600d558d
     default: "Not Started"
   },
   tags: {

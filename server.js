@@ -28,7 +28,7 @@ const corsOptions = {
     const allowedOrigins = [
       'http://localhost:5173',
       'http://localhost:3000',
-      'https://ems.wordlanetech.com'  // Removed trailing slash
+      'https://ems.wordlanetech.com'
     ];
     
     // Allow requests with no origin (like mobile apps or curl requests)
@@ -47,11 +47,8 @@ const corsOptions = {
   exposedHeaders: ['X-Total-Count']
 };
 
-// Apply CORS middleware
+// Apply CORS middleware (this handles preflight requests automatically)
 app.use(cors(corsOptions));
-
-// Handle preflight requests for all routes
-app.options('*', cors(corsOptions));
 
 // Middleware
 app.use(express.json()); // Parse JSON bodies

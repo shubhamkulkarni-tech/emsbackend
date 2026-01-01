@@ -28,7 +28,6 @@ export const getTasks = async (req, res) => {
   try {
     const userRole = req.user.role?.toLowerCase();
     const userId = req.user.id;
-<<<<<<< HEAD
     const { status, priority, assignedTo, team, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
 
     let filter = {};
@@ -40,8 +39,6 @@ export const getTasks = async (req, res) => {
     if (priority) filter.priority = priority;
     if (assignedTo) filter.assignedTo = assignedTo;
     if (team) filter.team = team;
-=======
->>>>>>> 69a1868ebc54e916510eeccf928179d6600d558d
 
     let tasks;
     
@@ -169,24 +166,8 @@ export const addTask = async (req, res) => {
 
     const taskId = await generateTaskId();
     const {
-<<<<<<< HEAD
       title, description, assignedTo, team, dueDate, estimatedHours,
       priority, category, tags, notes, notifyAssignee, additionalReviewers
-=======
-      title,
-      description,
-      assignedTo,
-      team,
-      startDate,
-      dueDate,
-      estimatedHours,
-      priority,
-      category,
-      progress,
-      tags,
-      notes,
-      notifyAssignee
->>>>>>> 69a1868ebc54e916510eeccf928179d6600d558d
     } = req.body;
     
     // Create attachments array if files were uploaded
@@ -206,30 +187,9 @@ export const addTask = async (req, res) => {
     }
 
     const newTask = new Task({
-<<<<<<< HEAD
       taskId, title, description, assignedTo, team, dueDate,
       estimatedHours, priority, category, tags, notes, attachments,
       notifyAssignee, createdBy: req.user.id, reviewers
-=======
-      taskId,
-      title,
-      description,
-      assignedTo,
-      team: team || null,
-      startDate: startDate || null,
-      dueDate,
-      estimatedHours: estimatedHours || null,
-      priority: priority || "Medium",
-      status: "Not Started", // Always start with Not Started
-      category: category || "Development",
-      progress: progress || 0,
-      tags: tags || "",
-      notes: notes || "",
-      attachments,
-      notifyAssignee: notifyAssignee === 'true' || notifyAssignee === true,
-      createdBy: req.user.id,
-      progressStatus: "Not Started" // Initialize with Not Started
->>>>>>> 69a1868ebc54e916510eeccf928179d6600d558d
     });
 
     const savedTask = await newTask.save();
@@ -327,7 +287,6 @@ export const acceptTask = async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
     const task = await Task.findById(id);
-<<<<<<< HEAD
 
     if (!task) return res.status(404).json({ error: "Task not found" });
     if (task.assignedTo.toString() !== userId) return res.status(403).json({ error: "You can only accept your assigned tasks" });
@@ -335,14 +294,6 @@ export const acceptTask = async (req, res) => {
 
     task.progressStatus = "Pending";
     task.status = "In Progress"; // Keep main status in sync
-=======
-    if (!task) {
-      return res.status(404).json({ error: "Task not found" });
-    }
-    
-    // Remove attachment from task
-    task.attachments = task.attachments.filter(att => att._id.toString() !== attachmentId);
->>>>>>> 69a1868ebc54e916510eeccf928179d6600d558d
     await task.save();
     
     res.status(200).json({ message: "Task accepted. Status is now 'In Progress'.", task });
@@ -351,140 +302,10 @@ export const acceptTask = async (req, res) => {
   }
 };
 
-<<<<<<< HEAD
 // @desc    Employee submits a task for review
 // @route   PUT /api/tasks/:id/submit
 // @access  Private (Assigned Employee)
 export const submitTaskForReview = async (req, res) => {
-=======
-// ===== NEW WORKFLOW FUNCTIONS =====
-
-// Employee accepts a task: "Not Started" or "Reverted" -> "Pending"
-export const acceptTask = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userRole = req.user.role?.toLowerCase();
-    const userId = req.user.id;
-
-    const task = await Task.findById(id);
-    if (!task) {
-      return res.status(404).json({ error: "Task not found" });
-    }
-
-    if (userRole !== "employee" || task.assignedTo.toString() !== userId.toString()) {
-      return res.status(403).json({ error: "You can only accept your own assigned tasks" });
-    }
-
-    // Allow accepting if status is "Not Started" OR "Reverted"
-    if (task.status !== "Not Started" && task.status !== "Reverted") {
-      return res.status(400).json({ error: "Task can only be accepted if its status is 'Not Started' or 'Reverted'" });
-    }
-
-    task.status = "Pending";
-    task.progressStatus = "Pending";
-    await task.save();
-
-    const populatedTask = await Task.findById(task._id)
-      .populate("assignedTo", "name email")
-      .populate("team", "team_name")
-      .populate("createdBy", "name email");
-
-    res.json({ message: "Task accepted. Status is now Pending.", task: populatedTask });
-  } catch (error) {
-    console.error("Error accepting task:", error);
-    res.status(500).json({ error: "Failed to accept task" });
-  }
-};
-
-// Employee submits work for review: "Pending" -> "In Review"
-export const submitTaskForReview = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userRole = req.user.role?.toLowerCase();
-    const userId = req.user.id;
-
-    const task = await Task.findById(id);
-    if (!task) {
-      return res.status(404).json({ error: "Task not found" });
-    }
-
-    if (userRole !== "employee" || task.assignedTo.toString() !== userId.toString()) {
-      return res.status(403).json({ error: "You can only submit your own assigned tasks" });
-    }
-
-    if (task.status !== "Pending") {
-      return res.status(400).json({ error: "Task can only be submitted if its status is 'Pending'" });
-    }
-
-    task.status = "In Review";
-    task.progressStatus = "In Review";
-    await task.save();
-    
-    const populatedTask = await Task.findById(task._id)
-      .populate("assignedTo", "name email")
-      .populate("team", "team_name")
-      .populate("createdBy", "name email");
-
-    res.json({ message: "Task submitted for review. Status is now 'In Review'.", task: populatedTask });
-  } catch (error) {
-    console.error("Error submitting task:", error);
-    res.status(500).json({ error: "Failed to submit task" });
-  }
-};
-
-// Admin/Manager reviews a task: "In Review" -> "Completed" or "Reverted"
-export const reviewTask = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { action } = req.body; // 'approve' or 'revert'
-    const userRole = req.user.role?.toLowerCase();
-
-    if (!["admin", "manager"].includes(userRole)) {
-      return res.status(403).json({ error: "Unauthorized" });
-    }
-
-    if (!["approve", "revert"].includes(action)) {
-        return res.status(400).json({ error: "Invalid action. Must be 'approve' or 'revert'." });
-    }
-
-    const task = await Task.findById(id);
-    if (!task) {
-      return res.status(404).json({ error: "Task not found" });
-    }
-
-    if (task.status !== "In Review") {
-      return res.status(400).json({ error: "Task can only be reviewed if its status is 'In Review'" });
-    }
-
-    if (action === "approve") {
-      task.status = "Completed";
-      task.progressStatus = "Completed";
-    } else if (action === "revert") {
-      task.status = "Reverted";
-      task.progressStatus = "Reverted";
-    }
-
-    await task.save();
-
-    const populatedTask = await Task.findById(task._id)
-      .populate("assignedTo", "name email")
-      .populate("team", "team_name")
-      .populate("createdBy", "name email");
-
-    res.json({ 
-      message: `Task ${action}d successfully. Status is now '${task.status}'.`, 
-      task: populatedTask 
-    });
-  } catch (error) {
-    console.error("Error reviewing task:", error);
-    res.status(500).json({ error: "Failed to review task" });
-  }
-};
-
-// You can keep the old updateProgressStatus function for backward compatibility
-// but it's recommended to use the new specific functions instead
-export const updateProgressStatus = async (req, res) => {
->>>>>>> 69a1868ebc54e916510eeccf928179d6600d558d
   try {
     const { id } = req.params;
     const userId = req.user.id;
@@ -513,24 +334,15 @@ export const reviewTask = async (req, res) => {
     const { action, comment } = req.body; // action: 'approve' or 'revert'
     const userId = req.user.id;
     const userRole = req.user.role?.toLowerCase();
-<<<<<<< HEAD
 
     if (!["admin", "manager"].includes(userRole)) {
       return res.status(403).json({ error: "Not authorized to review tasks" });
-=======
-    const userId = req.user.id;
-
-    // Validate progressStatus
-    if (!["Not Started", "Pending", "In Review", "Completed", "Reverted"].includes(progressStatus)) {
-      return res.status(400).json({ error: "Invalid progress status" });
->>>>>>> 69a1868ebc54e916510eeccf928179d6600d558d
     }
     
     const task = await Task.findById(id);
     if (!task) return res.status(404).json({ error: "Task not found" });
     if (task.status !== "In Review") return res.status(400).json({ error: "Task is not currently 'In Review'" });
 
-<<<<<<< HEAD
     const isCreator = task.createdBy.toString() === userId;
     const isReviewer = task.reviewers.some(r => r.toString() === userId);
     if (!isCreator && !isReviewer) {
@@ -544,34 +356,6 @@ export const reviewTask = async (req, res) => {
         task.progressStatus = "Reverted";
         task.status = "Reverted"; // Fixed: Set status to "Reverted" instead of "On Hold"
         if (comment) task.notes = (task.notes ? task.notes + '\n\n' : '') + `Reverted by ${req.user.name}: ${comment}`;
-=======
-    // Employee can only mark their own tasks as Pending or In Review
-    if (userRole === "employee") {
-      if (task.assignedTo.toString() !== userId.toString()) {
-        return res.status(403).json({ error: "You can only update your own tasks" });
-      }
-      if (progressStatus === "Completed") {
-        return res.status(403).json({ error: "Only admin/manager can mark tasks as completed" });
-      }
-      if (progressStatus === "Not Started" && task.status !== "Pending" && task.status !== "Reverted") {
-        return res.status(403).json({ error: "Cannot revert to Not Started" });
-      }
-      // Employee can set to Pending or In Review
-      task.progressStatus = progressStatus;
-      task.status = progressStatus; // Keep status in sync with progressStatus
-    } 
-    // Admin and Manager can mark any task as Not Started or Completed
-    else if (userRole === "admin" || userRole === "manager") {
-      if (progressStatus === "Pending") {
-        return res.status(400).json({ error: "Admin/Manager cannot set status to Pending" });
-      }
-      if (progressStatus === "In Review") {
-        return res.status(400).json({ error: "Admin/Manager cannot set status to In Review" });
-      }
-      // Admin/Manager can set to Not Started or Completed
-      task.progressStatus = progressStatus;
-      task.status = progressStatus; // Keep status in sync with progressStatus
->>>>>>> 69a1868ebc54e916510eeccf928179d6600d558d
     } else {
         return res.status(400).json({ error: "Invalid review action" });
     }
@@ -581,7 +365,6 @@ export const reviewTask = async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: "Failed to review task" });
   }
-<<<<<<< HEAD
 };
 
 // @desc    Get all team members (for assigning tasks)
@@ -596,6 +379,4 @@ export const getTeamMembers = async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch team members" });
   }
-=======
->>>>>>> 69a1868ebc54e916510eeccf928179d6600d558d
 };

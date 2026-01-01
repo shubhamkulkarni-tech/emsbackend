@@ -19,6 +19,13 @@ const __dirname = path.dirname(__filename);
 dotenv.config();
 const app = express();
 
+// Check if MONGO_URI is defined
+if (!process.env.MONGO_URI) {
+  console.error("❌ MONGO_URI is not defined in .env file");
+  console.log("Please add MONGO_URI to your .env file with your MongoDB connection string");
+  process.exit(1);
+}
+
 // Trust proxy for Render
 app.set('trust proxy', 1);
 
@@ -42,8 +49,8 @@ const corsOptions = {
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], // Added PATCH here
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-HTTP-Method-Override'], // Added X-HTTP-Method-Override
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-HTTP-Method-Override'],
   exposedHeaders: ['X-Total-Count']
 };
 

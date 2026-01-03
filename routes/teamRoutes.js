@@ -7,7 +7,7 @@ const router = express.Router();
 router.post("/", protect, authorizeRoles("admin", "hr"), createTeam);
 router.get("/", protect, getTeams);
 router.get("/:id", protect, getTeamById);
-router.put("/:id", protect, authorizeRoles("admin"), updateTeam);
+router.put("/:id", protect, authorizeRoles("admin" , "hr"), updateTeam);
 router.delete("/:id", protect, authorizeRoles("admin"), deleteTeam);
 
 export default router;

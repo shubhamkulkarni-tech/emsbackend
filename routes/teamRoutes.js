@@ -4,7 +4,7 @@ import protect, { authorizeRoles } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-router.post("/", protect, authorizeRoles("admin"), createTeam);
+router.post("/", protect, authorizeRoles("admin", "hr"), createTeam);
 router.get("/", protect, getTeams);
 router.get("/:id", protect, getTeamById);
 router.put("/:id", protect, authorizeRoles("admin"), updateTeam);

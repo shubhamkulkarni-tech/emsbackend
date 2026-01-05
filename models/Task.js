@@ -16,11 +16,12 @@ const taskSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
-  assignedTo: {
+  // Changed from single ObjectId to array of ObjectIds
+  assignedTo: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
     required: true
-  },
+  }],
   team: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Team"

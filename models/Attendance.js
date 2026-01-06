@@ -13,13 +13,13 @@ const attendanceSchema = new mongoose.Schema(
     },
 
     date: {
-      type: String, // YYYY-MM-DD (matches frontend filtering)
+      type: String, // YYYY-MM-DD
       required: true,
     },
 
     punch_in: {
       type: String,
-      required: true,
+      required: false, // Changed: Not required for Absent/Leave
     },
 
     punch_out: {
@@ -37,7 +37,7 @@ const attendanceSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
-  },
+  }, 
   { timestamps: true }
 );
 

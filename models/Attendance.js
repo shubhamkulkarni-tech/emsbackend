@@ -19,7 +19,7 @@ const attendanceSchema = new mongoose.Schema(
 
     punch_in: {
       type: String,
-      required: false, // Changed: Not required for Absent/Leave
+      required: false,
     },
 
     punch_out: {
@@ -29,7 +29,7 @@ const attendanceSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["Present", "Absent", "Leave", "Late"],
+      enum: ["Present", "Absent", "Leave", "Late", "Half Day"], // Added "Half Day"
       default: "Present",
     },
 

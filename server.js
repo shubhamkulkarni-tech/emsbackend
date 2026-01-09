@@ -16,17 +16,19 @@ import taskRoutes from './routes/tasks.Routes.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Load environment variables
 dotenv.config();
+
 const app = express();
-dotenv.config();
-// ✅ 1. TRUST PROXY FIRST
+
+// ✅ 1. TRUST PROXY (Required for Render)
 app.set('trust proxy', 1);
 
 // ✅ 2. BLOCK MOBILE DEVICES (DESKTOP ONLY)
 app.use((req, res, next) => {
   const ua = req.headers["user-agent"] || "";
 
-  // Allow preflight & health check
+  // Allow preflight & health check to pass through immediately
   if (req.method === "OPTIONS" || req.path === "/api/health") {
     return next();
   }
@@ -37,17 +39,13 @@ app.use((req, res, next) => {
         <head>
           <title>Access Denied</title>
           <meta charset="UTF-8" />
+          <style>
+            body { margin:0; height:100vh; display:flex; align-items:center; justify-content:center; font-family:Arial; background:#f8f9fa; }
+            div { text-align:center; }
+          </style>
         </head>
-        <body style="
-          margin:0;
-          height:100vh;
-          display:flex;
-          align-items:center;
-          justify-content:center;
-          font-family:Arial;
-          background:#f8f9fa;
-        ">
-          <div style="text-align:center;">
+        <body>
+          <div>
             <h2>🚫 Access Restricted</h2>
             <p>This website is only accessible on Laptop / Desktop.</p>
           </div>
@@ -66,16 +64,14 @@ if (!process.env.MONGO_URI) {
   process.exit(1);
 }
 
-// Trust proxy for Render
-app.set('trust proxy', 1);
-
-// Enhanced CORS configuration
+// ✅ 3. ENHANCED CORS CONFIGURATION
 const corsOptions = {
   origin: function (origin, callback) {
     const allowedOrigins = [
       'http://localhost:5173',
+      'http://127.0.0.1:5173', // Added for safety (Chrome sometimes uses IP)
       'http://localhost:3000',
-      'https://ems.wordlanetech.com'
+      'https://ems.wordlanetech.com' // Your production frontend
     ];
     
     // Allow requests with no origin (like mobile apps or curl requests)
@@ -84,7 +80,7 @@ const corsOptions = {
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
-      console.log('CORS blocked origin:', origin);
+      console.log('❌ CORS blocked origin:', origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -99,17 +95,18 @@ app.use(cors(corsOptions));
 
 // Middleware
 app.use(express.json()); // Parse JSON bodies
-app.use(express.urlencoded({ extended: true, limit: '10mb' })); // Parse URL-encoded bodies with increased limit for file uploads
+app.use(express.urlencoded({ extended: true, limit: '10mb' })); // Parse URL-encoded bodies
 
 // Static files - IMPORTANT for serving profile images
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Create uploads directory if it doesn't exist
-const fs = await import('fs');
-const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.default.existsSync(uploadsDir)) {
-  fs.default.mkdirSync(uploadsDir, { recursive: true });
-}
+import('fs').then(fs => {
+  const uploadsDir = path.join(__dirname, 'uploads');
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+}).catch(err => console.error("Error checking fs module:", err));
 
 // ✅ Mount all user routes
 app.use("/api/users", userRoutes);
@@ -165,9 +162,9 @@ app.use((req, res) => {
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {
-    console.log("Your Database is Connected to your Server ✅");
+    console.log("✅ Database Connected");
     
-    // Test a simple operation to verify the connection is working
+    // Test a simple operation to verify connection is working
     mongoose.connection.db.listCollections().toArray(function(err, names) {
       if (err) {
         console.error('Error listing collections:', err);
@@ -182,6 +179,6 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port http://localhost:${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 CORS enabled for: https://ems.wordlanetech.com`);
+  console.log(`🔗 CORS enabled for: http://localhost:5173`);
   console.log(`📊 Health check: http://localhost:5000/api/health`);
 });

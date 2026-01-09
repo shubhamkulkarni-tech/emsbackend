@@ -4,6 +4,9 @@ import dotenv from "dotenv";
 import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
+import cron from "node-cron"; // ✅ ADDED: Import node-cron
+
+// --- ROUTES IMPORTS ---
 import userRoutes from "./routes/userRoutes.js";
 import teamRoutes from './routes/teamRoutes.js';
 import dashboardRoute from './routes/dashboardRoutes.js';
@@ -11,6 +14,9 @@ import projectRoutes from './routes/projectRoutes.js';
 import attendanceRouter from './routes/attendanceRoutes.js';
 import leaveRoutes from './routes/leaveRoutes.js';   
 import taskRoutes from './routes/tasks.Routes.js';
+
+// --- CONTROLLER IMPORTS ---
+import { autoPunchOutCron } from "./controllers/attendanceController.js"; // ✅ ADDED: Import Cron Logic
 
 // Fix for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -116,6 +122,15 @@ app.use('/api/projects', projectRoutes);
 app.use('/api/attendance', attendanceRouter);
 app.use('/api/leaves', leaveRoutes);
 app.use('/api/tasks', taskRoutes);
+
+// ✅ AUTO PUNCH OUT CRON JOB
+// Schedule: "1 18 * * *" -> At 18:01 (6:01 PM) every day
+cron.schedule("1 18 * * *", () => {
+  console.log("⏰ [CRON] Running Auto Punch Out Job at 18:01...");
+  autoPunchOutCron();
+}, {
+  timezone: "Asia/Kolkata"
+});
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

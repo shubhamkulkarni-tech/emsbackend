@@ -44,7 +44,7 @@ export const getTeams = async (req, res) => {
     const userId = req.user._id;
 
     // Admin sees all teams
-    if (userRole === "admin") {
+    if (userRole === "admin" || userRole === "hr") {
       teams = await Team.find()
         .populate("team_leader", "name role _id")
         .populate("members.employee", "name role _id");

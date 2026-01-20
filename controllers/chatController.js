@@ -6,12 +6,11 @@ import Message from "../models/Message.js";
 /* =========================================================
    ✅ Allowed Users Logic (Permission System)
 ========================================================= */
-
 export const getAllowedUsers = async (req, res) => {
   try {
     const userId = req.user.id;
-    const me = await User.findById(userId).select("_id role name email");
 
+    const me = await User.findById(userId).select("_id role name email");
     if (!me) return res.status(404).json({ message: "User not found" });
 
     let allowedUsers = [];
@@ -39,17 +38,27 @@ export const getAllowedUsers = async (req, res) => {
       allowedUsers = await User.find({
         _id: { $ne: userId },
         $or: [
-          { _id: { $in: teamEmployees } }, // own team employees
-          { role: { $in: ["admin", "hr", "manager"] } }, // admin/hr/other managers
+          { _id: { $in: teamEmployees } }, // ✅ own team employees
+          { role: { $in: ["admin", "hr", "manager"] } }, // ✅ admin/hr/other managers
         ],
       }).select("_id name email role");
     }
 
-    // ✅ EMPLOYEE -> teammates + manager + HR
+    // ✅ EMPLOYEE -> teammates + manager + HR (ONLY same team members ✅)
     else if (me.role === "employee") {
       const myTeam = await Team.findOne({ employees: userId }).select(
         "manager employees"
       );
+
+      // ✅ If employee not in any team -> allow only HR (optional safety)
+      if (!myTeam) {
+        allowedUsers = await User.find({
+          _id: { $ne: userId },
+          role: "hr",
+        }).select("_id name email role");
+
+        return res.json({ me, allowedUsers });
+      }
 
       const managerId = myTeam?.manager;
       const teammates = (myTeam?.employees || []).filter(
@@ -59,9 +68,9 @@ export const getAllowedUsers = async (req, res) => {
       allowedUsers = await User.find({
         _id: { $ne: userId },
         $or: [
-          { _id: { $in: teammates } }, // teammates
-          { _id: managerId }, // manager
-          { role: "hr" }, // hr
+          { _id: { $in: teammates } }, // ✅ teammates
+          { _id: managerId }, // ✅ manager
+          { role: "hr" }, // ✅ hr
         ],
       }).select("_id name email role");
     }
@@ -74,7 +83,7 @@ export const getAllowedUsers = async (req, res) => {
 };
 
 /* =========================================================
-   ✅ Helper: Check permission
+   ✅ Helper: Check permission (ONLY same team logic ✅)
 ========================================================= */
 const isUserAllowed = async (meId, targetId) => {
   const me = await User.findById(meId).select("_id role");
@@ -100,18 +109,20 @@ const isUserAllowed = async (meId, targetId) => {
     return myTeam.employees.some((id) => id.toString() === targetId.toString());
   }
 
-  // ✅ Employee -> teammates + manager + HR
+  // ✅ Employee -> teammates + manager + HR (ONLY same team)
   if (me.role === "employee") {
+    // ✅ HR always allowed
     if (target.role === "hr") return true;
 
     const myTeam = await Team.findOne({ employees: meId }).select(
       "manager employees"
     );
-
     if (!myTeam) return false;
 
+    // ✅ Manager allowed
     if (myTeam.manager?.toString() === targetId.toString()) return true;
 
+    // ✅ Teammate allowed
     return myTeam.employees.some((id) => id.toString() === targetId.toString());
   }
 

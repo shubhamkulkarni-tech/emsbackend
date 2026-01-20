@@ -1,7 +1,7 @@
 import express from "express";
 import protect, { authorizeRoles } from "../middleware/authMiddleware.js";
-import { allowRoles } from "../middleware/allowRoles.js";
 import { uploadKycDocs } from "../middleware/kycUpload.js";
+
 import {
   upsertEmployeeKyc,
   getEmployeeKyc,
@@ -12,28 +12,21 @@ import {
 
 const router = express.Router();
 
-// ✅ Admin/HR list
-router.get("/", protect, allowRoles("admin", "hr"), listKyc);
+/* ✅ IMPORTANT: Static routes FIRST */
 
-// ✅ Save / Update KYC (employee/admin)
-router.post(
-  "/:employeeId",
-  protect,
-  uploadKycDocs,
-  upsertEmployeeKyc
-);
-
-// ✅ Get single employee kyc
-router.get("/:employeeId", protect, getEmployeeKyc);
-
-// ✅ Verify / Reject (admin/hr only)
-router.patch(
-  "/:employeeId/verify",
-  protect,
-  allowRoles("admin", "hr"),
-  verifyKyc
-);
-
+// ✅ Missing/Empty KYC Employees (Admin/HR)
 router.get("/missing", protect, authorizeRoles("admin", "hr"), getEmployeesMissingKyc);
+
+// ✅ Admin/HR list (pending/verified/rejected)
+router.get("/", protect, authorizeRoles("admin", "hr"), listKyc);
+
+// ✅ Verify / Reject (Admin/HR)
+router.patch("/:employeeId/verify", protect, authorizeRoles("admin", "hr"), verifyKyc);
+
+// ✅ Employee/Admin Save KYC
+router.post("/:employeeId", protect, uploadKycDocs, upsertEmployeeKyc);
+
+// ✅ Get single employee KYC (KEEP LAST)
+router.get("/:employeeId", protect, getEmployeeKyc);
 
 export default router;

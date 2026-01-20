@@ -4,34 +4,30 @@ const employeeKYCSchema = new mongoose.Schema(
   {
     employeeId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Employee",
+      ref: "User",
       required: true,
       unique: true,
     },
 
-    aadhaarNumber: { type: String, required: true },
-    panNumber: { type: String, required: true },
+    panNumber: { type: String, default: "" },
+    aadhaarNumber: { type: String, default: "" },
 
-    dob: { type: Date },
-    gender: { type: String, enum: ["male", "female", "other"] },
+    bankName: { type: String, default: "" },
+    ifscCode: { type: String, default: "" },
+    accountNumber: { type: String, default: "" },
 
-    presentAddress: { type: String },
-    permanentAddress: { type: String },
-    city: { type: String },
-    state: { type: String },
-    pincode: { type: String },
-
-    bankName: { type: String },
-    accountNumber: { type: String },
-    ifscCode: { type: String },
-    upiId: { type: String },
+    presentAddress: { type: String, default: "" },
+    permanentAddress: { type: String, default: "" },
+    city: { type: String, default: "" },
+    state: { type: String, default: "" },
+    pincode: { type: String, default: "" },
 
     documents: {
-      aadhaarFront: { type: String },
-      aadhaarBack: { type: String },
-      panCard: { type: String },
-      passbook: { type: String },
-      photo: { type: String },
+      aadhaarFront: { type: String, default: "" },
+      aadhaarBack: { type: String, default: "" },
+      panCard: { type: String, default: "" },
+      passbook: { type: String, default: "" },
+      photo: { type: String, default: "" },
     },
 
     status: {
@@ -40,10 +36,9 @@ const employeeKYCSchema = new mongoose.Schema(
       default: "pending",
     },
 
+    remarks: { type: String, default: "" },
     verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     verifiedAt: { type: Date },
-
-    remarks: { type: String }, // rejection reason / notes
   },
   { timestamps: true }
 );

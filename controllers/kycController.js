@@ -14,20 +14,27 @@ export const upsertEmployeeKyc = async (req, res) => {
     if (req.files?.passbook) docs.passbook = `/uploads/kyc/${req.files.passbook[0].filename}`;
     if (req.files?.photo) docs.photo = `/uploads/kyc/${req.files.photo[0].filename}`;
 
+    // ✅ Always keep old docs + update only new ones
+    const existing = await EmployeeKYC.findOne({ employeeId });
+
     const kyc = await EmployeeKYC.findOneAndUpdate(
       { employeeId },
       {
         ...data,
-        $set: {
-          ...data,
-          "documents": { ...docs },
+        employeeId,
+        documents: {
+          ...(existing?.documents || {}),
+          ...docs,
         },
+        // ✅ Whenever employee updates docs again => pending
+        status: existing?.status === "verified" ? "pending" : (existing?.status || "pending"),
       },
       { new: true, upsert: true }
     );
 
     res.json({ success: true, message: "KYC saved successfully", kyc });
   } catch (err) {
+    console.error("upsertEmployeeKyc error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -35,10 +42,30 @@ export const upsertEmployeeKyc = async (req, res) => {
 export const getEmployeeKyc = async (req, res) => {
   try {
     const { employeeId } = req.params;
-    const kyc = await EmployeeKYC.findOne({ employeeId });
 
+    const kyc = await EmployeeKYC.findOne({ employeeId });
     res.json({ success: true, kyc });
   } catch (err) {
+    console.error("getEmployeeKyc error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ✅ for Admin panel list (pending/verified/rejected)
+export const listKyc = async (req, res) => {
+  try {
+    const status = req.query.status; // optional
+
+    const filter = {};
+    if (status) filter.status = status;
+
+    const list = await EmployeeKYC.find(filter)
+      .populate("employeeId", "name email phone role employeeId profileImage") // ✅ if employeeId is ObjectId ref
+      .sort({ updatedAt: -1 });
+
+    res.json({ success: true, kycList: list });
+  } catch (err) {
+    console.error("listKyc error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -48,19 +75,28 @@ export const verifyKyc = async (req, res) => {
     const { employeeId } = req.params;
     const { status, remarks } = req.body;
 
+    if (!["pending", "verified", "rejected"].includes(status)) {
+      return res.status(400).json({ success: false, message: "Invalid status" });
+    }
+
     const kyc = await EmployeeKYC.findOneAndUpdate(
       { employeeId },
       {
         status,
-        remarks,
+        remarks: remarks || "",
         verifiedBy: req.user?._id,
         verifiedAt: new Date(),
       },
       { new: true }
     );
 
+    if (!kyc) {
+      return res.status(404).json({ success: false, message: "KYC record not found" });
+    }
+
     res.json({ success: true, message: "KYC status updated", kyc });
   } catch (err) {
+    console.error("verifyKyc error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 };

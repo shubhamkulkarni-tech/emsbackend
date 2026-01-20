@@ -17,8 +17,7 @@ import attendanceRouter from "./routes/attendanceRoutes.js";
 import leaveRoutes from "./routes/leaveRoutes.js";
 import taskRoutes from "./routes/tasks.Routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
-import kycRoutes from "./routes/kycRoutes.js";
-
+import employeeKycRoutes from "./routes/kycRoutes.js";
 
 // --- CONTROLLER IMPORTS ---
 import { autoPunchOutCron } from "./controllers/attendanceController.js";
@@ -83,7 +82,10 @@ app.use("/api/attendance", attendanceRouter);
 app.use("/api/leaves", leaveRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/notifications", notificationRoutes);
-app.use("/api/kyc", kycRoutes);
+
+app.use("/uploads", express.static("uploads"));
+app.use("/api/kyc", employeeKycRoutes);
+
 // ✅ AUTO PUNCH OUT CRON JOB
 cron.schedule(
   "1 18 * * *",

@@ -17,6 +17,8 @@ import attendanceRouter from "./routes/attendanceRoutes.js";
 import leaveRoutes from "./routes/leaveRoutes.js";
 import taskRoutes from "./routes/tasks.Routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
+import kycRoutes from "./routes/kycRoutes.js";
+
 
 // --- CONTROLLER IMPORTS ---
 import { autoPunchOutCron } from "./controllers/attendanceController.js";
@@ -42,7 +44,9 @@ const corsOptions = {
   origin: function (origin, callback) {
     const allowedOrigins = [
       "http://localhost:5173",
+      "http://localhost:5000",
       "http://127.0.0.1:5173",
+      "http://127.0.0.1:5000",
       "https://ems.wordlanetech.com", // ✅ Hostinger Frontend
     ];
 
@@ -79,7 +83,7 @@ app.use("/api/attendance", attendanceRouter);
 app.use("/api/leaves", leaveRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/notifications", notificationRoutes);
-
+app.use("/api/kyc", kycRoutes);
 // ✅ AUTO PUNCH OUT CRON JOB
 cron.schedule(
   "1 18 * * *",

@@ -13,18 +13,26 @@ import {
 
 const router = express.Router();
 
-// ✅ Allowed Users
+/* =========================================================
+   ✅ Allowed Users
+========================================================= */
 router.get("/allowed-users", authMiddleware, getAllowedUsers);
 
-// ✅ Conversations
+/* =========================================================
+   ✅ Conversations
+========================================================= */
 router.post("/conversation/create", authMiddleware, createOrGetConversation);
 router.get("/conversation/my", authMiddleware, getMyConversations);
 
-// ✅ Messages
+/* =========================================================
+   ✅ Messages
+========================================================= */
 router.post("/message/send", authMiddleware, sendMessage);
 router.get("/message/:conversationId", authMiddleware, getMessagesByConversation);
 
-// ✅ Status
+/* =========================================================
+   ✅ WhatsApp style status updates
+========================================================= */
 router.post("/message/delivered", authMiddleware, markMessageDelivered);
 router.post("/message/seen", authMiddleware, markMessageSeen);
 

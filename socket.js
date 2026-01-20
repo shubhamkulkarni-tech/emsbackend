@@ -1,6 +1,6 @@
 import { Server } from "socket.io";
 
-const onlineUsers = new Map();
+const onlineUsers = new Map(); // userId => socketId
 
 export const setupSocket = (httpServer) => {
   const io = new Server(httpServer, {
@@ -14,33 +14,56 @@ export const setupSocket = (httpServer) => {
   io.on("connection", (socket) => {
     console.log("✅ Socket connected:", socket.id);
 
+    // ✅ Join user room (VERY IMPORTANT)
     socket.on("join", (userId) => {
-      if (!userId) return;
-      const uid = userId.toString();
+      try {
+        if (!userId) return;
 
-      socket.join(uid);
-      onlineUsers.set(uid, socket.id);
+        const uid = userId.toString();
 
-      io.emit("onlineUsers", Array.from(onlineUsers.keys()));
+        socket.join(uid);
+        onlineUsers.set(uid, socket.id);
+
+        console.log("✅ User joined room:", uid);
+
+        // ✅ Broadcast online users
+        io.emit("onlineUsers", Array.from(onlineUsers.keys()));
+      } catch (err) {
+        console.log("❌ join error:", err.message);
+      }
     });
 
-    // ✅ Chat Events
-    socket.on("chat:sendMessage", (payload) => {
-      if (!payload?.receiverId) return;
-      io.to(payload.receiverId.toString()).emit("chat:receiveMessage", payload);
-    });
+    /* ======================================================
+       ✅ CHAT EVENTS (Realtime)
+    ====================================================== */
 
+    // ✅ Optional: typing
     socket.on("chat:typing", ({ receiverId, senderId }) => {
-      if (!receiverId) return;
+      if (!receiverId || !senderId) return;
       io.to(receiverId.toString()).emit("chat:typing", { senderId });
     });
 
     socket.on("chat:stopTyping", ({ receiverId, senderId }) => {
-      if (!receiverId) return;
+      if (!receiverId || !senderId) return;
       io.to(receiverId.toString()).emit("chat:stopTyping", { senderId });
     });
 
-    // ✅ Notifications Example
+    // ✅ If you want client-to-client message event (optional)
+    // NOTE: Your main DB save happens via controller route (/message/send)
+    // so this is not required now.
+    socket.on("chat:sendMessage", (payload) => {
+      try {
+        if (!payload?.receiverId) return;
+
+        io.to(payload.receiverId.toString()).emit("chat:receiveMessage", payload);
+      } catch (err) {
+        console.log("❌ chat:sendMessage error:", err.message);
+      }
+    });
+
+    /* ======================================================
+       ✅ NOTIFICATION EVENTS (Optional)
+    ====================================================== */
     socket.on("notification:markSeen", ({ userId }) => {
       if (!userId) return;
       io.to(userId.toString()).emit("notification:refresh", {
@@ -48,13 +71,20 @@ export const setupSocket = (httpServer) => {
       });
     });
 
+    /* ======================================================
+       ✅ DISCONNECT
+    ====================================================== */
     socket.on("disconnect", () => {
+      console.log("❌ Socket disconnected:", socket.id);
+
+      // remove from map
       for (const [userId, sockId] of onlineUsers.entries()) {
         if (sockId === socket.id) {
           onlineUsers.delete(userId);
           break;
         }
       }
+
       io.emit("onlineUsers", Array.from(onlineUsers.keys()));
     });
   });

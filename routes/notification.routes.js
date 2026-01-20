@@ -1,7 +1,5 @@
 import express from "express";
-import protect from "../middleware/authMiddleware.js"; // ✅ your path
-
-import { authorizeRoles } from "../middleware/authMiddleware.js";
+import authMiddleware from "../middleware/authMiddleware.js";
 
 import {
   createNotification,
@@ -15,25 +13,37 @@ import {
 
 const router = express.Router();
 
-// ✅ create one (admin only)
-router.post("/create", protect, authorizeRoles("admin"), createNotification);
+/* =========================================================
+   ✅ Create Notifications
+========================================================= */
 
-// ✅ broadcast (admin only)
-router.post("/broadcast", protect, authorizeRoles("admin"), broadcastNotification);
+// ✅ Create notification (single user)
+router.post("/create", authMiddleware, createNotification);
 
-// ✅ get my notifications
-router.get("/my", protect, getMyNotifications);
+// ✅ Broadcast notification (all users)
+router.post("/broadcast", authMiddleware, broadcastNotification);
 
-// ✅ unread count
-router.get("/unread-count", protect, getUnreadCount);
+/* =========================================================
+   ✅ Get Notifications
+========================================================= */
 
-// ✅ mark read
-router.put("/read/:id", protect, markAsRead);
+// ✅ Get my notifications (pagination + filters)
+router.get("/my", authMiddleware, getMyNotifications);
 
-// ✅ mark all read
-router.put("/read-all", protect, markAllAsRead);
+// ✅ Unread count
+router.get("/unread-count", authMiddleware, getUnreadCount);
 
-// ✅ delete notification
-router.delete("/:id", protect, deleteNotification);
+/* =========================================================
+   ✅ Read / Delete
+========================================================= */
+
+// ✅ Mark one as read
+router.patch("/read/:id", authMiddleware, markAsRead);
+
+// ✅ Mark all read
+router.patch("/read-all", authMiddleware, markAllAsRead);
+
+// ✅ Delete one notification (soft delete)
+router.delete("/:id", authMiddleware, deleteNotification);
 
 export default router;

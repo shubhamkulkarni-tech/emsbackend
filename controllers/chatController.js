@@ -50,7 +50,7 @@ export const getAllowedUsers = async (req, res) => {
         "manager employees"
       );
 
-      // ✅ If employee not in any team -> allow only HR (optional safety)
+      // ✅ If employee not in any team -> allow only HR
       if (!myTeam) {
         allowedUsers = await User.find({
           _id: { $ne: userId },
@@ -239,7 +239,7 @@ export const sendMessage = async (req, res) => {
       lastMessageAt: new Date(),
     });
 
-    // ✅ Realtime emit
+    // ✅ Realtime emit to receiver room
     const io = req.app.get("io");
     if (io) {
       io.to(receiverId.toString()).emit("chat:receiveMessage", msg);
@@ -274,6 +274,100 @@ export const getMessagesByConversation = async (req, res) => {
     return res.json(messages);
   } catch (error) {
     console.log("❌ getMessagesByConversation Error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+/* =========================================================
+   ✅ Delivered & Seen APIs (WhatsApp style ✅)
+========================================================= */
+
+// ✅ Mark delivered
+export const markMessageDelivered = async (req, res) => {
+  try {
+    const meId = req.user.id;
+    const { messageId } = req.body;
+
+    if (!messageId)
+      return res.status(400).json({ message: "messageId is required" });
+
+    const msg = await Message.findById(messageId);
+    if (!msg) return res.status(404).json({ message: "Message not found" });
+
+    const convo = await Conversation.findById(msg.conversationId);
+    if (!convo)
+      return res.status(404).json({ message: "Conversation not found" });
+
+    const isMember = convo.members.some(
+      (id) => id.toString() === meId.toString()
+    );
+    if (!isMember) return res.status(403).json({ message: "Not allowed" });
+
+    // ✅ update only if sent
+    if (msg.status === "sent") {
+      msg.status = "delivered";
+      await msg.save();
+    }
+
+    // ✅ Emit status update to both members
+    const io = req.app.get("io");
+    if (io) {
+      convo.members.forEach((memberId) => {
+        io.to(memberId.toString()).emit("chat:messageStatusUpdated", {
+          messageId: msg._id,
+          status: msg.status,
+        });
+      });
+    }
+
+    return res.json({ messageId: msg._id, status: msg.status });
+  } catch (error) {
+    console.log("❌ markMessageDelivered Error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ✅ Mark seen
+export const markMessageSeen = async (req, res) => {
+  try {
+    const meId = req.user.id;
+    const { messageId } = req.body;
+
+    if (!messageId)
+      return res.status(400).json({ message: "messageId is required" });
+
+    const msg = await Message.findById(messageId);
+    if (!msg) return res.status(404).json({ message: "Message not found" });
+
+    const convo = await Conversation.findById(msg.conversationId);
+    if (!convo)
+      return res.status(404).json({ message: "Conversation not found" });
+
+    const isMember = convo.members.some(
+      (id) => id.toString() === meId.toString()
+    );
+    if (!isMember) return res.status(403).json({ message: "Not allowed" });
+
+    // ✅ update to seen
+    if (msg.status !== "seen") {
+      msg.status = "seen";
+      await msg.save();
+    }
+
+    // ✅ Emit status update to both members
+    const io = req.app.get("io");
+    if (io) {
+      convo.members.forEach((memberId) => {
+        io.to(memberId.toString()).emit("chat:messageStatusUpdated", {
+          messageId: msg._id,
+          status: msg.status,
+        });
+      });
+    }
+
+    return res.json({ messageId: msg._id, status: msg.status });
+  } catch (error) {
+    console.log("❌ markMessageSeen Error:", error);
     return res.status(500).json({ message: "Server error" });
   }
 };

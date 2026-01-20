@@ -1,4 +1,5 @@
 import EmployeeKYC from "../models/EmployeeKYC.js";
+import User from "../models/User.js";
 
 export const upsertEmployeeKyc = async (req, res) => {
   try {
@@ -97,6 +98,78 @@ export const verifyKyc = async (req, res) => {
     res.json({ success: true, message: "KYC status updated", kyc });
   } catch (err) {
     console.error("verifyKyc error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+export const getEmployeesMissingKyc = async (req, res) => {
+  try {
+    // ✅ Get all employees (exclude admins if you want)
+    const employees = await User.find({
+      role: { $in: ["employee", "manager", "hr"] }, // admin remove
+    }).select("name email phone role employeeId department designation profileImage createdAt");
+
+    // ✅ Get all KYC records
+    const kycList = await EmployeeKYC.find().select("employeeId status panNumber aadhaarNumber documents updatedAt");
+
+    // ✅ Map employeeId => kyc
+    const kycMap = new Map();
+    for (const kyc of kycList) {
+      kycMap.set(String(kyc.employeeId), kyc);
+    }
+
+    // ✅ Helper: check if KYC incomplete
+    const isIncompleteKyc = (kyc) => {
+      if (!kyc) return true;
+
+      const hasPan = kyc.panNumber && kyc.panNumber.trim().length > 0;
+      const hasAadhaar = kyc.aadhaarNumber && String(kyc.aadhaarNumber).trim().length > 0;
+
+      const docs = kyc.documents || {};
+      const hasAnyDoc =
+        !!docs.aadhaarFront || !!docs.aadhaarBack || !!docs.panCard || !!docs.passbook || !!docs.photo;
+
+      // Incomplete if no PAN + no Aadhaar + no docs
+      return !(hasPan || hasAadhaar || hasAnyDoc);
+    };
+
+    const result = employees.map((emp) => {
+      const kyc = kycMap.get(String(emp._id));
+
+      if (!kyc) {
+        return {
+          employee: emp,
+          kycStatus: "not_submitted",
+          kycUpdatedAt: null,
+        };
+      }
+
+      // ✅ if record exists but empty data
+      if (isIncompleteKyc(kyc)) {
+        return {
+          employee: emp,
+          kycStatus: "incomplete",
+          kycUpdatedAt: kyc.updatedAt,
+        };
+      }
+
+      // ✅ else normal status
+      return {
+        employee: emp,
+        kycStatus: kyc.status || "pending",
+        kycUpdatedAt: kyc.updatedAt,
+      };
+    });
+
+    // ✅ Only return those not submitted OR incomplete
+    const missing = result.filter((x) => ["not_submitted", "incomplete"].includes(x.kycStatus));
+
+    res.json({
+      success: true,
+      total: missing.length,
+      data: missing,
+    });
+  } catch (err) {
+    console.error("getEmployeesMissingKyc error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 };

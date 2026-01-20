@@ -2,12 +2,12 @@ import express from "express";
 import protect, { authorizeRoles } from "../middleware/authMiddleware.js";
 import { allowRoles } from "../middleware/allowRoles.js";
 import { uploadKycDocs } from "../middleware/kycUpload.js";
-
 import {
   upsertEmployeeKyc,
   getEmployeeKyc,
   verifyKyc,
   listKyc,
+  getEmployeesMissingKyc,
 } from "../controllers/kycController.js";
 
 const router = express.Router();
@@ -33,5 +33,7 @@ router.patch(
   allowRoles("admin", "hr"),
   verifyKyc
 );
+
+router.get("/missing", protect, authorizeRoles("admin", "hr"), getEmployeesMissingKyc);
 
 export default router;

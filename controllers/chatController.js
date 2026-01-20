@@ -187,8 +187,12 @@ export const getMyConversations = async (req, res) => {
 // ✅ Send message (DB + Socket + Notification)
 export const sendMessage = async (req, res) => {
   try {
-    const meId = req.user.id;
+    const meId = req.user?.id || req.user?._id;
     const { conversationId, text } = req.body;
+
+    if (!meId) {
+      return res.status(401).json({ message: "Unauthorized. Login again ✅" });
+    }
 
     if (!conversationId || !text) {
       return res
@@ -200,26 +204,20 @@ export const sendMessage = async (req, res) => {
     if (!convo)
       return res.status(404).json({ message: "Conversation not found" });
 
-    // ✅ Ensure sender is member
     const isMember = convo.members.some(
       (id) => id.toString() === meId.toString()
     );
     if (!isMember) return res.status(403).json({ message: "Not allowed" });
 
-    // ✅ receiver = other member
     const receiverId = convo.members.find(
       (id) => id.toString() !== meId.toString()
     );
-    if (!receiverId)
-      return res.status(400).json({ message: "Receiver not found" });
 
-    // ✅ Permission check
     const allowed = await isUserAllowed(meId, receiverId);
     if (!allowed) {
       return res.status(403).json({ message: "You are not allowed to chat" });
     }
 
-    // ✅ Save message
     const msg = await Message.create({
       conversationId,
       senderId: meId,
@@ -227,53 +225,28 @@ export const sendMessage = async (req, res) => {
       status: "sent",
     });
 
-    // ✅ Update conversation
     await Conversation.findByIdAndUpdate(conversationId, {
       lastMessage: text,
       lastMessageAt: new Date(),
     });
 
-    // ✅ Create notification for receiver
-    const senderUser = await User.findById(meId).select("_id name role");
-
-    const noti = await Notification.create({
-      userId: receiverId,
-      type: "chat",
-      title: "New Message",
-      message: `${senderUser?.name || "Someone"}: ${text}`,
-      data: {
-        conversationId,
-        senderId: meId,
-      },
-      isRead: false,
-    });
-
-    // ✅ Socket emit (realtime)
+    // ✅ Socket realtime emit
     const io = req.app.get("io");
-    if (io) {
-      // ✅ message to receiver
+    if (io && receiverId) {
       io.to(receiverId.toString()).emit("chat:receiveMessage", msg);
-
-      // ✅ notification to receiver
-      io.to(receiverId.toString()).emit("notification:new", noti);
-
-      // ✅ unread count update
-      const unreadCount = await Notification.countDocuments({
-        userId: receiverId,
-        isRead: false,
-      });
-
-      io.to(receiverId.toString()).emit("notification:unreadCount", {
-        unreadCount,
-      });
+      io.to(meId.toString()).emit("chat:receiveMessage", msg); // ✅ sender ko bhi
     }
 
     return res.json(msg);
   } catch (error) {
     console.log("❌ sendMessage Error:", error);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({
+      message: "Server error",
+      error: error.message,
+    });
   }
 };
+
 
 // ✅ Get messages of conversation
 export const getMessagesByConversation = async (req, res) => {

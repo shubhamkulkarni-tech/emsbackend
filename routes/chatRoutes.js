@@ -14,7 +14,7 @@ const router = express.Router();
 // ✅ Allowed Users
 router.get("/allowed-users", authMiddleware, getAllowedUsers);
 
-// ✅ Conversation
+// ✅ Conversations
 router.post("/conversation/create", authMiddleware, createOrGetConversation);
 router.get("/conversation/my", authMiddleware, getMyConversations);
 

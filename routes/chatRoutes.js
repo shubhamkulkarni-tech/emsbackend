@@ -4,19 +4,21 @@ import authMiddleware from "../middleware/authMiddleware.js";
 import {
   getAllowedUsers,
   createOrGetConversation,
-  getMyConversations,
+  createOrGetTeamConversation,
   sendMessage,
   getMessagesByConversation,
 } from "../controllers/chatController.js";
 
 const router = express.Router();
 
-// ✅ Allowed Users
+// ✅ Allowed users + allowed teams
 router.get("/allowed-users", authMiddleware, getAllowedUsers);
 
-// ✅ Conversations
+// ✅ Create / Get DM conversation
 router.post("/conversation/create", authMiddleware, createOrGetConversation);
-router.get("/conversation/my", authMiddleware, getMyConversations);
+
+// ✅ Create / Get TEAM group conversation
+router.post("/conversation/team/create", authMiddleware, createOrGetTeamConversation);
 
 // ✅ Messages
 router.post("/message/send", authMiddleware, sendMessage);

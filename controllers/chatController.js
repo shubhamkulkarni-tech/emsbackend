@@ -4,26 +4,7 @@ import Conversation from "../models/Conversation.js";
 import Message from "../models/Message.js";
 
 /* =========================================================
-   ✅ Helper: Get Team of a user (based on your schema)
-   - leader team: Team.team_leader === userId
-   - employee team: Team.members.employee contains userId
-========================================================= */
-const getMyTeam = async (userId) => {
-  const team = await Team.findOne({
-    $or: [
-      { team_leader: userId },
-      { "members.employee": userId },
-    ],
-  })
-    .select("team_leader members team_name")
-    .populate("team_leader", "_id name email role")
-    .populate("members.employee", "_id name email role");
-
-  return team;
-};
-
-/* =========================================================
-   ✅ Allowed Users Logic (Permission System)
+   ✅ Allowed Users + Allowed Teams
 ========================================================= */
 export const getAllowedUsers = async (req, res) => {
   try {
@@ -33,73 +14,85 @@ export const getAllowedUsers = async (req, res) => {
     if (!me) return res.status(404).json({ message: "User not found" });
 
     let allowedUsers = [];
+    let allowedTeams = [];
 
-    // ✅ ADMIN -> everyone except self
+    // ✅ ADMIN -> everyone + all teams
     if (me.role === "admin") {
       allowedUsers = await User.find({ _id: { $ne: userId } }).select(
         "_id name email role"
       );
+
+      allowedTeams = await Team.find({})
+        .select("_id team_name team_leader members");
     }
 
-    // ✅ HR -> everyone except self
+    // ✅ HR -> admin + managers + employees + all teams
     else if (me.role === "hr") {
-      allowedUsers = await User.find({ _id: { $ne: userId } }).select(
-        "_id name email role"
-      );
+      allowedUsers = await User.find({
+        _id: { $ne: userId },
+        role: { $in: ["admin", "manager", "employee"] },
+      }).select("_id name email role");
+
+      allowedTeams = await Team.find({})
+        .select("_id team_name team_leader members");
     }
 
-    // ✅ MANAGER (team leader) -> admin + hr + own team employees
+    // ✅ MANAGER -> team employees + admin/hr + only own team
     else if (me.role === "manager") {
       const myTeam = await Team.findOne({ team_leader: userId }).select(
-        "members"
+        "_id team_name team_leader members"
       );
 
-      const teamEmployees =
-        myTeam?.members?.map((m) => m.employee).filter(Boolean) || [];
+      let teamEmployees = [];
+      if (myTeam?.members?.length) {
+        teamEmployees = myTeam.members.map((m) => m.employee);
+      }
 
       allowedUsers = await User.find({
         _id: { $ne: userId },
         $or: [
-          { role: { $in: ["admin", "hr"] } }, // ✅ admin + hr
-          { _id: { $in: teamEmployees } }, // ✅ own team employees
+          { _id: { $in: teamEmployees } },
+          { role: { $in: ["admin", "hr", "manager"] } },
         ],
       }).select("_id name email role");
+
+      if (myTeam) allowedTeams = [myTeam];
     }
 
-    // ✅ EMPLOYEE -> hr + team leader + teammates
+    // ✅ EMPLOYEE -> teammates + manager + HR + only their team
     else if (me.role === "employee") {
       const myTeam = await Team.findOne({
         "members.employee": userId,
-      }).select("team_leader members");
+      }).select("_id team_name team_leader members");
 
-      // ✅ If employee not in team -> allow only HR
       if (!myTeam) {
         allowedUsers = await User.find({
           _id: { $ne: userId },
           role: "hr",
         }).select("_id name email role");
 
-        return res.json({ me, allowedUsers });
+        return res.json({ me, allowedUsers, allowedTeams: [] });
       }
 
-      const teamLeaderId = myTeam.team_leader;
+      const managerId = myTeam.team_leader;
 
       const teammates = (myTeam.members || [])
         .map((m) => m.employee)
-        .filter(Boolean)
         .filter((id) => id.toString() !== userId.toString());
 
       allowedUsers = await User.find({
         _id: { $ne: userId },
         $or: [
-          { role: "hr" }, // ✅ HR
-          { _id: teamLeaderId }, // ✅ Team Leader
-          { _id: { $in: teammates } }, // ✅ Teammates
+          { _id: { $in: teammates } },
+          { _id: managerId },
+          { role: "hr" },
         ],
       }).select("_id name email role");
+
+      allowedTeams = [myTeam];
     }
 
-    return res.json({ me, allowedUsers });
+    return res.json({ me, allowedUsers, allowedTeams });
   } catch (error) {
     console.log("❌ getAllowedUsers Error:", error);
     return res.status(500).json({ message: "Server error" });
@@ -107,7 +100,7 @@ export const getAllowedUsers = async (req, res) => {
 };
 
 /* =========================================================
-   ✅ Helper: Permission Check (same rules)
+   ✅ Helper permission for DM
 ========================================================= */
 const isUserAllowed = async (meId, targetId) => {
   const me = await User.findById(meId).select("_id role");
@@ -115,26 +108,23 @@ const isUserAllowed = async (meId, targetId) => {
 
   if (!me || !target) return false;
 
-  // ✅ Admin -> anyone
   if (me.role === "admin") return true;
 
-  // ✅ HR -> anyone
-  if (me.role === "hr") return true;
+  if (me.role === "hr") {
+    return ["admin", "manager", "employee"].includes(target.role);
+  }
 
-  // ✅ Manager -> admin + hr + own team employees
   if (me.role === "manager") {
-    if (["admin", "hr"].includes(target.role)) return true;
+    if (["admin", "hr", "manager"].includes(target.role)) return true;
 
     const myTeam = await Team.findOne({ team_leader: meId }).select("members");
     if (!myTeam) return false;
 
-    const teamEmployees =
-      myTeam.members?.map((m) => m.employee).filter(Boolean) || [];
-
-    return teamEmployees.some((id) => id.toString() === targetId.toString());
+    return (myTeam.members || []).some(
+      (m) => m.employee.toString() === targetId.toString()
+    );
   }
 
-  // ✅ Employee -> hr + team leader + teammates
   if (me.role === "employee") {
     if (target.role === "hr") return true;
 
@@ -143,21 +133,46 @@ const isUserAllowed = async (meId, targetId) => {
     );
     if (!myTeam) return false;
 
-    // ✅ leader allowed
     if (myTeam.team_leader?.toString() === targetId.toString()) return true;
 
-    // ✅ teammates allowed
-    const teammates =
-      myTeam.members?.map((m) => m.employee).filter(Boolean) || [];
-
-    return teammates.some((id) => id.toString() === targetId.toString());
+    return (myTeam.members || []).some(
+      (m) => m.employee.toString() === targetId.toString()
+    );
   }
 
   return false;
 };
 
 /* =========================================================
-   ✅ Conversation APIs
+   ✅ Helper permission for TEAM GROUP
+========================================================= */
+const isTeamAllowed = async (meId, teamId) => {
+  const me = await User.findById(meId).select("_id role");
+  if (!me) return false;
+
+  // ✅ Admin/HR can open any team group
+  if (me.role === "admin" || me.role === "hr") return true;
+
+  const team = await Team.findById(teamId).select("_id team_leader members");
+  if (!team) return false;
+
+  // ✅ Manager only own team
+  if (me.role === "manager") {
+    return team.team_leader?.toString() === meId.toString();
+  }
+
+  // ✅ Employee only their team
+  if (me.role === "employee") {
+    return (team.members || []).some(
+      (m) => m.employee.toString() === meId.toString()
+    );
+  }
+
+  return false;
+};
+
+/* =========================================================
+   ✅ Create/Get DM Conversation
 ========================================================= */
 export const createOrGetConversation = async (req, res) => {
   try {
@@ -168,20 +183,19 @@ export const createOrGetConversation = async (req, res) => {
       return res.status(400).json({ message: "receiverId is required" });
     }
 
-    // ✅ Permission check
     const allowed = await isUserAllowed(meId, receiverId);
     if (!allowed) {
       return res.status(403).json({ message: "You are not allowed to chat" });
     }
 
-    // ✅ Find existing conversation
     let convo = await Conversation.findOne({
+      type: "dm",
       members: { $all: [meId, receiverId] },
     });
 
-    // ✅ Create new
     if (!convo) {
       convo = await Conversation.create({
+        type: "dm",
         members: [meId, receiverId],
         lastMessage: "",
         lastMessageAt: null,
@@ -195,25 +209,56 @@ export const createOrGetConversation = async (req, res) => {
   }
 };
 
-export const getMyConversations = async (req, res) => {
+/* =========================================================
+   ✅ Create/Get TEAM Conversation (Group)
+========================================================= */
+export const createOrGetTeamConversation = async (req, res) => {
   try {
     const meId = req.user.id;
+    const { teamId } = req.body;
 
-    const conversations = await Conversation.find({
-      members: { $in: [meId] },
-    })
-      .sort({ updatedAt: -1 })
-      .populate("members", "_id name email role");
+    if (!teamId) return res.status(400).json({ message: "teamId is required" });
 
-    return res.json(conversations);
+    const allowed = await isTeamAllowed(meId, teamId);
+    if (!allowed) {
+      return res.status(403).json({ message: "Not allowed to open team group" });
+    }
+
+    const team = await Team.findById(teamId).select(
+      "_id team_name team_leader members"
+    );
+    if (!team) return res.status(404).json({ message: "Team not found" });
+
+    // ✅ members = team leader + team members
+    const memberIds = [
+      team.team_leader,
+      ...(team.members || []).map((m) => m.employee),
+    ].filter(Boolean);
+
+    let convo = await Conversation.findOne({
+      type: "team",
+      teamId: teamId,
+    });
+
+    if (!convo) {
+      convo = await Conversation.create({
+        type: "team",
+        teamId,
+        members: memberIds,
+        lastMessage: "",
+        lastMessageAt: null,
+      });
+    }
+
+    return res.json(convo);
   } catch (error) {
-    console.log("❌ getMyConversations Error:", error);
+    console.log("❌ createOrGetTeamConversation Error:", error);
     return res.status(500).json({ message: "Server error" });
   }
 };
 
 /* =========================================================
-   ✅ Message APIs
+   ✅ Send message (DM + TEAM)
 ========================================================= */
 export const sendMessage = async (req, res) => {
   try {
@@ -230,24 +275,30 @@ export const sendMessage = async (req, res) => {
     if (!convo)
       return res.status(404).json({ message: "Conversation not found" });
 
-    // ✅ Ensure sender is member
     const isMember = convo.members.some(
       (id) => id.toString() === meId.toString()
     );
     if (!isMember) return res.status(403).json({ message: "Not allowed" });
 
-    // ✅ Find receiver
-    const receiverId = convo.members.find(
-      (id) => id.toString() !== meId.toString()
-    );
-
-    // ✅ Permission check
-    const allowed = await isUserAllowed(meId, receiverId);
-    if (!allowed) {
-      return res.status(403).json({ message: "You are not allowed to chat" });
+    // ✅ DM permission check (only for dm)
+    if (convo.type === "dm") {
+      const receiverId = convo.members.find(
+        (id) => id.toString() !== meId.toString()
+      );
+      const allowed = await isUserAllowed(meId, receiverId);
+      if (!allowed) {
+        return res.status(403).json({ message: "You are not allowed to chat" });
+      }
     }
 
-    // ✅ Save message
+    // ✅ Team permission check
+    if (convo.type === "team") {
+      const allowed = await isTeamAllowed(meId, convo.teamId);
+      if (!allowed) {
+        return res.status(403).json({ message: "Not allowed in this team" });
+      }
+    }
+
     const msg = await Message.create({
       conversationId,
       senderId: meId,
@@ -255,16 +306,26 @@ export const sendMessage = async (req, res) => {
       status: "sent",
     });
 
-    // ✅ Update conversation
     await Conversation.findByIdAndUpdate(conversationId, {
       lastMessage: text,
       lastMessageAt: new Date(),
     });
 
-    // ✅ Emit realtime
+    // ✅ Socket emit (DM => receiver only, TEAM => all members except me)
     const io = req.app.get("io");
-    if (io && receiverId) {
-      io.to(receiverId.toString()).emit("chat:receiveMessage", msg);
+    if (io) {
+      if (convo.type === "dm") {
+        const receiverId = convo.members.find(
+          (id) => id.toString() !== meId.toString()
+        );
+        if (receiverId) io.to(receiverId.toString()).emit("chat:receiveMessage", msg);
+      } else {
+        convo.members.forEach((memberId) => {
+          if (memberId.toString() !== meId.toString()) {
+            io.to(memberId.toString()).emit("chat:receiveMessage", msg);
+          }
+        });
+      }
     }
 
     return res.json(msg);
@@ -274,6 +335,9 @@ export const sendMessage = async (req, res) => {
   }
 };
 
+/* =========================================================
+   ✅ Get messages of a conversation
+========================================================= */
 export const getMessagesByConversation = async (req, res) => {
   try {
     const meId = req.user.id;
@@ -283,7 +347,6 @@ export const getMessagesByConversation = async (req, res) => {
     if (!convo)
       return res.status(404).json({ message: "Conversation not found" });
 
-    // ✅ Ensure member
     const isMember = convo.members.some(
       (id) => id.toString() === meId.toString()
     );

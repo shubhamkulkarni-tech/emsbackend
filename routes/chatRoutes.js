@@ -17,8 +17,12 @@ router.get("/allowed-users", authMiddleware, getAllowedUsers);
 // ✅ Create / Get DM conversation
 router.post("/conversation/create", authMiddleware, createOrGetConversation);
 
-// ✅ Create / Get TEAM group conversation
-router.post("/conversation/team/create", authMiddleware, createOrGetTeamConversation);
+// ✅ Create / Get TEAM conversation (Group chat)
+router.post(
+  "/conversation/team/create",
+  authMiddleware,
+  createOrGetTeamConversation
+);
 
 // ✅ Messages
 router.post("/message/send", authMiddleware, sendMessage);

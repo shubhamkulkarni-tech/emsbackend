@@ -2,7 +2,25 @@ import User from "../models/User.js";
 import Team from "../models/Team.js";
 import Conversation from "../models/Conversation.js";
 import Message from "../models/Message.js";
-import Notification from "../models/Notification.js";
+
+/* =========================================================
+   ✅ Helper: Get Team of a user (based on your schema)
+   - leader team: Team.team_leader === userId
+   - employee team: Team.members.employee contains userId
+========================================================= */
+const getMyTeam = async (userId) => {
+  const team = await Team.findOne({
+    $or: [
+      { team_leader: userId },
+      { "members.employee": userId },
+    ],
+  })
+    .select("team_leader members team_name")
+    .populate("team_leader", "_id name email role")
+    .populate("members.employee", "_id name email role");
+
+  return team;
+};
 
 /* =========================================================
    ✅ Allowed Users Logic (Permission System)
@@ -16,37 +34,45 @@ export const getAllowedUsers = async (req, res) => {
 
     let allowedUsers = [];
 
-    // ✅ ADMIN + HR -> can chat with anyone
-    if (me.role === "admin" || me.role === "hr") {
+    // ✅ ADMIN -> everyone except self
+    if (me.role === "admin") {
       allowedUsers = await User.find({ _id: { $ne: userId } }).select(
         "_id name email role"
       );
-      return res.json({ me, allowedUsers });
     }
 
-    // ✅ MANAGER -> only own team employees + HR
-    if (me.role === "manager") {
-      const myTeam = await Team.findOne({ manager: userId }).select("employees");
-      const teamEmployees = myTeam?.employees || [];
+    // ✅ HR -> everyone except self
+    else if (me.role === "hr") {
+      allowedUsers = await User.find({ _id: { $ne: userId } }).select(
+        "_id name email role"
+      );
+    }
+
+    // ✅ MANAGER (team leader) -> admin + hr + own team employees
+    else if (me.role === "manager") {
+      const myTeam = await Team.findOne({ team_leader: userId }).select(
+        "members"
+      );
+
+      const teamEmployees =
+        myTeam?.members?.map((m) => m.employee).filter(Boolean) || [];
 
       allowedUsers = await User.find({
         _id: { $ne: userId },
         $or: [
-          { _id: { $in: teamEmployees } }, // ✅ own employees
-          { role: "hr" }, // ✅ HR
+          { role: { $in: ["admin", "hr"] } }, // ✅ admin + hr
+          { _id: { $in: teamEmployees } }, // ✅ own team employees
         ],
       }).select("_id name email role");
-
-      return res.json({ me, allowedUsers });
     }
 
-    // ✅ EMPLOYEE -> only teammates + manager + HR
-    if (me.role === "employee") {
-      const myTeam = await Team.findOne({ employees: userId }).select(
-        "manager employees"
-      );
+    // ✅ EMPLOYEE -> hr + team leader + teammates
+    else if (me.role === "employee") {
+      const myTeam = await Team.findOne({
+        "members.employee": userId,
+      }).select("team_leader members");
 
-      // ✅ no team -> allow only HR
+      // ✅ If employee not in team -> allow only HR
       if (!myTeam) {
         allowedUsers = await User.find({
           _id: { $ne: userId },
@@ -56,24 +82,24 @@ export const getAllowedUsers = async (req, res) => {
         return res.json({ me, allowedUsers });
       }
 
-      const managerId = myTeam?.manager;
-      const teammates = (myTeam?.employees || []).filter(
-        (id) => id.toString() !== userId.toString()
-      );
+      const teamLeaderId = myTeam.team_leader;
+
+      const teammates = (myTeam.members || [])
+        .map((m) => m.employee)
+        .filter(Boolean)
+        .filter((id) => id.toString() !== userId.toString());
 
       allowedUsers = await User.find({
         _id: { $ne: userId },
         $or: [
-          { _id: { $in: teammates } }, // ✅ teammates
-          { _id: managerId }, // ✅ manager
-          { role: "hr" }, // ✅ hr
+          { role: "hr" }, // ✅ HR
+          { _id: teamLeaderId }, // ✅ Team Leader
+          { _id: { $in: teammates } }, // ✅ Teammates
         ],
       }).select("_id name email role");
-
-      return res.json({ me, allowedUsers });
     }
 
-    return res.json({ me, allowedUsers: [] });
+    return res.json({ me, allowedUsers });
   } catch (error) {
     console.log("❌ getAllowedUsers Error:", error);
     return res.status(500).json({ message: "Server error" });
@@ -81,7 +107,7 @@ export const getAllowedUsers = async (req, res) => {
 };
 
 /* =========================================================
-   ✅ Helper: Check permission
+   ✅ Helper: Permission Check (same rules)
 ========================================================= */
 const isUserAllowed = async (meId, targetId) => {
   const me = await User.findById(meId).select("_id role");
@@ -89,33 +115,42 @@ const isUserAllowed = async (meId, targetId) => {
 
   if (!me || !target) return false;
 
-  // ✅ Admin / HR -> all allowed
-  if (me.role === "admin" || me.role === "hr") return true;
+  // ✅ Admin -> anyone
+  if (me.role === "admin") return true;
 
-  // ✅ Manager -> only own employees + HR
+  // ✅ HR -> anyone
+  if (me.role === "hr") return true;
+
+  // ✅ Manager -> admin + hr + own team employees
   if (me.role === "manager") {
-    if (target.role === "hr") return true;
+    if (["admin", "hr"].includes(target.role)) return true;
 
-    const myTeam = await Team.findOne({ manager: meId }).select("employees");
+    const myTeam = await Team.findOne({ team_leader: meId }).select("members");
     if (!myTeam) return false;
 
-    return myTeam.employees.some((id) => id.toString() === targetId.toString());
+    const teamEmployees =
+      myTeam.members?.map((m) => m.employee).filter(Boolean) || [];
+
+    return teamEmployees.some((id) => id.toString() === targetId.toString());
   }
 
-  // ✅ Employee -> teammates + manager + HR
+  // ✅ Employee -> hr + team leader + teammates
   if (me.role === "employee") {
     if (target.role === "hr") return true;
 
-    const myTeam = await Team.findOne({ employees: meId }).select(
-      "manager employees"
+    const myTeam = await Team.findOne({ "members.employee": meId }).select(
+      "team_leader members"
     );
     if (!myTeam) return false;
 
-    // ✅ manager allowed
-    if (myTeam.manager?.toString() === targetId.toString()) return true;
+    // ✅ leader allowed
+    if (myTeam.team_leader?.toString() === targetId.toString()) return true;
 
-    // ✅ teammate allowed
-    return myTeam.employees.some((id) => id.toString() === targetId.toString());
+    // ✅ teammates allowed
+    const teammates =
+      myTeam.members?.map((m) => m.employee).filter(Boolean) || [];
+
+    return teammates.some((id) => id.toString() === targetId.toString());
   }
 
   return false;
@@ -124,8 +159,6 @@ const isUserAllowed = async (meId, targetId) => {
 /* =========================================================
    ✅ Conversation APIs
 ========================================================= */
-
-// ✅ Create / Get conversation
 export const createOrGetConversation = async (req, res) => {
   try {
     const meId = req.user.id;
@@ -146,7 +179,7 @@ export const createOrGetConversation = async (req, res) => {
       members: { $all: [meId, receiverId] },
     });
 
-    // ✅ Create new conversation
+    // ✅ Create new
     if (!convo) {
       convo = await Conversation.create({
         members: [meId, receiverId],
@@ -162,7 +195,6 @@ export const createOrGetConversation = async (req, res) => {
   }
 };
 
-// ✅ Get my conversation list
 export const getMyConversations = async (req, res) => {
   try {
     const meId = req.user.id;
@@ -183,16 +215,10 @@ export const getMyConversations = async (req, res) => {
 /* =========================================================
    ✅ Message APIs
 ========================================================= */
-
-// ✅ Send message (DB + Socket + Notification)
 export const sendMessage = async (req, res) => {
   try {
-    const meId = req.user?.id || req.user?._id;
+    const meId = req.user.id;
     const { conversationId, text } = req.body;
-
-    if (!meId) {
-      return res.status(401).json({ message: "Unauthorized. Login again ✅" });
-    }
 
     if (!conversationId || !text) {
       return res
@@ -204,20 +230,24 @@ export const sendMessage = async (req, res) => {
     if (!convo)
       return res.status(404).json({ message: "Conversation not found" });
 
+    // ✅ Ensure sender is member
     const isMember = convo.members.some(
       (id) => id.toString() === meId.toString()
     );
     if (!isMember) return res.status(403).json({ message: "Not allowed" });
 
+    // ✅ Find receiver
     const receiverId = convo.members.find(
       (id) => id.toString() !== meId.toString()
     );
 
+    // ✅ Permission check
     const allowed = await isUserAllowed(meId, receiverId);
     if (!allowed) {
       return res.status(403).json({ message: "You are not allowed to chat" });
     }
 
+    // ✅ Save message
     const msg = await Message.create({
       conversationId,
       senderId: meId,
@@ -225,30 +255,25 @@ export const sendMessage = async (req, res) => {
       status: "sent",
     });
 
+    // ✅ Update conversation
     await Conversation.findByIdAndUpdate(conversationId, {
       lastMessage: text,
       lastMessageAt: new Date(),
     });
 
-    // ✅ Socket realtime emit
+    // ✅ Emit realtime
     const io = req.app.get("io");
     if (io && receiverId) {
       io.to(receiverId.toString()).emit("chat:receiveMessage", msg);
-      io.to(meId.toString()).emit("chat:receiveMessage", msg); // ✅ sender ko bhi
     }
 
     return res.json(msg);
   } catch (error) {
     console.log("❌ sendMessage Error:", error);
-    return res.status(500).json({
-      message: "Server error",
-      error: error.message,
-    });
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
-
-// ✅ Get messages of conversation
 export const getMessagesByConversation = async (req, res) => {
   try {
     const meId = req.user.id;
@@ -258,6 +283,7 @@ export const getMessagesByConversation = async (req, res) => {
     if (!convo)
       return res.status(404).json({ message: "Conversation not found" });
 
+    // ✅ Ensure member
     const isMember = convo.members.some(
       (id) => id.toString() === meId.toString()
     );
@@ -270,99 +296,6 @@ export const getMessagesByConversation = async (req, res) => {
     return res.json(messages);
   } catch (error) {
     console.log("❌ getMessagesByConversation Error:", error);
-    return res.status(500).json({ message: "Server error" });
-  }
-};
-
-/* =========================================================
-   ✅ Delivered & Seen APIs (WhatsApp style ✅)
-========================================================= */
-
-// ✅ Mark delivered
-export const markMessageDelivered = async (req, res) => {
-  try {
-    const meId = req.user.id;
-    const { messageId } = req.body;
-
-    if (!messageId)
-      return res.status(400).json({ message: "messageId is required" });
-
-    const msg = await Message.findById(messageId);
-    if (!msg) return res.status(404).json({ message: "Message not found" });
-
-    const convo = await Conversation.findById(msg.conversationId);
-    if (!convo)
-      return res.status(404).json({ message: "Conversation not found" });
-
-    const isMember = convo.members.some(
-      (id) => id.toString() === meId.toString()
-    );
-    if (!isMember) return res.status(403).json({ message: "Not allowed" });
-
-    // ✅ only if sent
-    if (msg.status === "sent") {
-      msg.status = "delivered";
-      await msg.save();
-    }
-
-    // ✅ emit to both users
-    const io = req.app.get("io");
-    if (io) {
-      convo.members.forEach((memberId) => {
-        io.to(memberId.toString()).emit("chat:messageStatusUpdated", {
-          messageId: msg._id,
-          status: msg.status,
-        });
-      });
-    }
-
-    return res.json({ messageId: msg._id, status: msg.status });
-  } catch (error) {
-    console.log("❌ markMessageDelivered Error:", error);
-    return res.status(500).json({ message: "Server error" });
-  }
-};
-
-// ✅ Mark seen
-export const markMessageSeen = async (req, res) => {
-  try {
-    const meId = req.user.id;
-    const { messageId } = req.body;
-
-    if (!messageId)
-      return res.status(400).json({ message: "messageId is required" });
-
-    const msg = await Message.findById(messageId);
-    if (!msg) return res.status(404).json({ message: "Message not found" });
-
-    const convo = await Conversation.findById(msg.conversationId);
-    if (!convo)
-      return res.status(404).json({ message: "Conversation not found" });
-
-    const isMember = convo.members.some(
-      (id) => id.toString() === meId.toString()
-    );
-    if (!isMember) return res.status(403).json({ message: "Not allowed" });
-
-    if (msg.status !== "seen") {
-      msg.status = "seen";
-      await msg.save();
-    }
-
-    // ✅ emit to both users
-    const io = req.app.get("io");
-    if (io) {
-      convo.members.forEach((memberId) => {
-        io.to(memberId.toString()).emit("chat:messageStatusUpdated", {
-          messageId: msg._id,
-          status: msg.status,
-        });
-      });
-    }
-
-    return res.json({ messageId: msg._id, status: msg.status });
-  } catch (error) {
-    console.log("❌ markMessageSeen Error:", error);
     return res.status(500).json({ message: "Server error" });
   }
 };

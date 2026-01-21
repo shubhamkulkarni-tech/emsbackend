@@ -16,56 +16,44 @@ export const getAllowedUsers = async (req, res) => {
     let allowedUsers = [];
     let allowedTeams = [];
 
-    // ✅ ADMIN -> everyone + all teams
-    if (me.role === "admin") {
+    // ✅ 1) Base Permission Users
+    if (me.role === "admin" || me.role === "hr") {
+      // ✅ Admin/HR can message anyone
       allowedUsers = await User.find({ _id: { $ne: userId } }).select(
         "_id name email role"
       );
 
-      allowedTeams = await Team.find({})
-        .select("_id team_name team_leader members");
+      // ✅ Admin/HR all teams
+      allowedTeams = await Team.find({}).select(
+        "_id team_name team_leader members"
+      );
     }
 
-    // ✅ HR -> admin + managers + employees + all teams
-    else if (me.role === "hr") {
-      allowedUsers = await User.find({
-        _id: { $ne: userId },
-        role: { $in: ["admin", "manager", "employee"] },
-      }).select("_id name email role");
-
-      allowedTeams = await Team.find({})
-        .select("_id team_name team_leader members");
-    }
-
-    // ✅ MANAGER -> team employees + admin/hr + only own team
     else if (me.role === "manager") {
       const myTeam = await Team.findOne({ team_leader: userId }).select(
         "_id team_name team_leader members"
       );
 
-      let teamEmployees = [];
-      if (myTeam?.members?.length) {
-        teamEmployees = myTeam.members.map((m) => m.employee);
-      }
+      const teamEmployees = (myTeam?.members || []).map((m) => m.employee);
 
       allowedUsers = await User.find({
         _id: { $ne: userId },
         $or: [
-          { _id: { $in: teamEmployees } },
-          { role: { $in: ["admin", "hr", "manager"] } },
+          { _id: { $in: teamEmployees } }, // ✅ own employees
+          { role: { $in: ["admin", "hr"] } }, // ✅ admin/hr
         ],
       }).select("_id name email role");
 
       if (myTeam) allowedTeams = [myTeam];
     }
 
-    // ✅ EMPLOYEE -> teammates + manager + HR + only their team
     else if (me.role === "employee") {
-      const myTeam = await Team.findOne({
-        "members.employee": userId,
-      }).select("_id team_name team_leader members");
+      const myTeam = await Team.findOne({ "members.employee": userId }).select(
+        "_id team_name team_leader members"
+      );
 
       if (!myTeam) {
+        // ✅ if employee not in team -> allow HR only
         allowedUsers = await User.find({
           _id: { $ne: userId },
           role: "hr",
@@ -83,14 +71,39 @@ export const getAllowedUsers = async (req, res) => {
       allowedUsers = await User.find({
         _id: { $ne: userId },
         $or: [
-          { _id: { $in: teammates } },
-          { _id: managerId },
-          { role: "hr" },
+          { _id: { $in: teammates } }, // ✅ teammates
+          { _id: managerId }, // ✅ manager
+          { role: "hr" }, // ✅ HR
         ],
       }).select("_id name email role");
 
       allowedTeams = [myTeam];
     }
+
+    // ✅ 2) EXTRA: Anyone who already has chat with me should show in list
+    const myConversations = await Conversation.find({
+      type: "dm",
+      members: { $in: [userId] },
+    }).select("members");
+
+    const convoUserIds = myConversations
+      .flatMap((c) => c.members)
+      .map((id) => id.toString())
+      .filter((id) => id !== userId.toString());
+
+    const extraChatUsers = await User.find({
+      _id: { $in: convoUserIds },
+    }).select("_id name email role");
+
+    // ✅ Merge (Remove duplicates)
+    const merged = [...allowedUsers, ...extraChatUsers];
+    const uniqueMap = new Map();
+
+    merged.forEach((u) => {
+      uniqueMap.set(u._id.toString(), u);
+    });
+
+    allowedUsers = Array.from(uniqueMap.values());
 
     return res.json({ me, allowedUsers, allowedTeams });
   } catch (error) {
@@ -98,6 +111,7 @@ export const getAllowedUsers = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
 
 /* =========================================================
    ✅ Helper permission for DM

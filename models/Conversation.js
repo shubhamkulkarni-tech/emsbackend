@@ -8,17 +8,15 @@ const conversationSchema = new mongoose.Schema(
       default: "dm",
     },
 
-    // ✅ for dm (2 users)
-    members: [
-      { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-    ],
-
-    // ✅ for team group chat
     teamId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Team",
       default: null,
     },
+
+    members: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    ],
 
     lastMessage: { type: String, default: "" },
     lastMessageAt: { type: Date, default: null },

@@ -217,34 +217,43 @@ export const createOrGetTeamConversation = async (req, res) => {
     const meId = req.user.id;
     const { teamId } = req.body;
 
-    if (!teamId) return res.status(400).json({ message: "teamId is required" });
-
-    const allowed = await isTeamAllowed(meId, teamId);
-    if (!allowed) {
-      return res.status(403).json({ message: "Not allowed to open team group" });
+    if (!teamId) {
+      return res.status(400).json({ message: "teamId is required" });
     }
 
-    const team = await Team.findById(teamId).select(
-      "_id team_name team_leader members"
-    );
+    // ✅ Team fetch
+    const team = await Team.findById(teamId).populate("members.employee", "_id role");
     if (!team) return res.status(404).json({ message: "Team not found" });
 
-    // ✅ members = team leader + team members
-    const memberIds = [
-      team.team_leader,
-      ...(team.members || []).map((m) => m.employee),
-    ].filter(Boolean);
+    const teamLeaderId = team?.team_leader?.toString();
 
+    // ✅ Team member ids
+    const memberIds = (team?.members || [])
+      .map((m) => m?.employee?._id?.toString())
+      .filter(Boolean);
+
+    // ✅ allow only: admin/hr OR team leader OR team member
+    const me = await User.findById(meId).select("_id role");
+    const isAdminHr = ["admin", "hr"].includes((me?.role || "").toLowerCase());
+    const isLeader = teamLeaderId === meId.toString();
+    const isMember = memberIds.includes(meId.toString());
+
+    if (!isAdminHr && !isLeader && !isMember) {
+      return res.status(403).json({ message: "Not allowed in this team group" });
+    }
+
+    // ✅ find existing team conversation
     let convo = await Conversation.findOne({
       type: "team",
       teamId: teamId,
     });
 
+    // ✅ create new if not found
     if (!convo) {
       convo = await Conversation.create({
         type: "team",
-        teamId,
-        members: memberIds,
+        teamId: teamId,
+        members: [...new Set([teamLeaderId, ...memberIds])],
         lastMessage: "",
         lastMessageAt: null,
       });
@@ -256,6 +265,7 @@ export const createOrGetTeamConversation = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
 
 /* =========================================================
    ✅ Send message (DM + TEAM)
@@ -352,9 +362,10 @@ export const getMessagesByConversation = async (req, res) => {
     );
     if (!isMember) return res.status(403).json({ message: "Not allowed" });
 
-    const messages = await Message.find({ conversationId }).sort({
-      createdAt: 1,
-    });
+    // ✅ IMPORTANT: Populate senderId so frontend can show "who sent"
+    const messages = await Message.find({ conversationId })
+      .sort({ createdAt: 1 })
+      .populate("senderId", "_id name role email");
 
     return res.json(messages);
   } catch (error) {

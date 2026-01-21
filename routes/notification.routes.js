@@ -1,5 +1,5 @@
 import express from "express";
-import authMiddleware from "../middleware/authMiddleware.js";
+import protect from "../middleware/authMiddleware.js";
 
 import {
   createNotification,
@@ -13,37 +13,29 @@ import {
 
 const router = express.Router();
 
-/* =========================================================
-   ✅ Create Notifications
-========================================================= */
+/* ============================
+   ✅ NOTIFICATION ROUTES
+============================ */
 
-// ✅ Create notification (single user)
-router.post("/create", authMiddleware, createNotification);
-
-// ✅ Broadcast notification (all users)
-router.post("/broadcast", authMiddleware, broadcastNotification);
-
-/* =========================================================
-   ✅ Get Notifications
-========================================================= */
-
-// ✅ Get my notifications (pagination + filters)
-router.get("/my", authMiddleware, getMyNotifications);
+// ✅ My notifications
+router.get("/my", protect, getMyNotifications);
 
 // ✅ Unread count
-router.get("/unread-count", authMiddleware, getUnreadCount);
+router.get("/unread-count", protect, getUnreadCount);
 
-/* =========================================================
-   ✅ Read / Delete
-========================================================= */
-
-// ✅ Mark one as read
-router.patch("/read/:id", authMiddleware, markAsRead);
+// ✅ Mark one read
+router.put("/read/:id", protect, markAsRead);
 
 // ✅ Mark all read
-router.patch("/read-all", authMiddleware, markAllAsRead);
+router.put("/read-all", protect, markAllAsRead);
 
-// ✅ Delete one notification (soft delete)
-router.delete("/:id", authMiddleware, deleteNotification);
+// ✅ Delete one notification
+router.delete("/:id", protect, deleteNotification);
+
+// ✅ Create notification (single)
+router.post("/create", protect, createNotification);
+
+// ✅ Broadcast notification (all users)
+router.post("/broadcast", protect, broadcastNotification);
 
 export default router;

@@ -1,14 +1,20 @@
 import mongoose from "mongoose";
 import Notification from "../models/Notification.js";
 import { notifyUser, notifyManyUsers } from "../services/notification.service.js";
-import User from "../models/User.js"; // if you want broadcast filters by role etc
+import User from "../models/User.js";
 
 // ✅ Create Notification (single employee)
 export const createNotification = async (req, res) => {
   try {
-    const senderId = req.user._id;
-
+    const senderId = req.userId; // ✅ FIXED
     const { receiverId, title, message, type, priority, link, meta } = req.body;
+
+    if (!receiverId || !title || !message) {
+      return res.status(400).json({
+        success: false,
+        message: "receiverId, title and message are required",
+      });
+    }
 
     const notif = await notifyUser({
       receiverId,
@@ -21,7 +27,7 @@ export const createNotification = async (req, res) => {
       meta,
     });
 
-    // ✅ OPTIONAL Real-time socket emit
+    // ✅ Real-time socket emit
     const io = req.app.get("io");
     if (io) io.to(receiverId.toString()).emit("newNotification", notif);
 
@@ -38,13 +44,17 @@ export const createNotification = async (req, res) => {
 // ✅ Broadcast to all users
 export const broadcastNotification = async (req, res) => {
   try {
-    const senderId = req.user._id;
-
+    const senderId = req.userId; // ✅ FIXED
     const { title, message, type, priority, link, meta } = req.body;
 
-    // ✅ fetch all active users
-    const users = await User.find({}).select("_id");
+    if (!title || !message) {
+      return res.status(400).json({
+        success: false,
+        message: "title and message are required",
+      });
+    }
 
+    const users = await User.find({}).select("_id");
     const receiverIds = users.map((u) => u._id);
 
     const result = await notifyManyUsers({
@@ -82,22 +92,19 @@ export const broadcastNotification = async (req, res) => {
   }
 };
 
-// ✅ Get My Notifications (Pagination + filter)
+// ✅ Get My Notifications
 export const getMyNotifications = async (req, res) => {
   try {
-    const receiverId = req.user._id;
+    const receiverId = req.userId; // ✅ FIXED
 
     const page = Number(req.query.page || 1);
     const limit = Number(req.query.limit || 10);
     const skip = (page - 1) * limit;
 
-    const type = req.query.type; // optional filter
-    const isRead = req.query.isRead; // true/false optional
+    const type = req.query.type;
+    const isRead = req.query.isRead;
 
-    const query = {
-      receiverId,
-      isDeleted: false,
-    };
+    const query = { receiverId, isDeleted: false };
 
     if (type) query.type = type;
     if (isRead === "true") query.isRead = true;
@@ -125,7 +132,7 @@ export const getMyNotifications = async (req, res) => {
 // ✅ Unread Count
 export const getUnreadCount = async (req, res) => {
   try {
-    const receiverId = req.user._id;
+    const receiverId = req.userId; // ✅ FIXED
 
     const count = await Notification.countDocuments({
       receiverId,
@@ -142,11 +149,13 @@ export const getUnreadCount = async (req, res) => {
 // ✅ Mark one as read
 export const markAsRead = async (req, res) => {
   try {
-    const receiverId = req.user._id;
+    const receiverId = req.userId; // ✅ FIXED
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ success: false, message: "Invalid notification id" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid notification id" });
     }
 
     const notif = await Notification.findOneAndUpdate(
@@ -156,7 +165,9 @@ export const markAsRead = async (req, res) => {
     );
 
     if (!notif) {
-      return res.status(404).json({ success: false, message: "Notification not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Notification not found" });
     }
 
     res.status(200).json({
@@ -172,7 +183,7 @@ export const markAsRead = async (req, res) => {
 // ✅ Mark all as read
 export const markAllAsRead = async (req, res) => {
   try {
-    const receiverId = req.user._id;
+    const receiverId = req.userId; // ✅ FIXED
 
     await Notification.updateMany(
       { receiverId, isRead: false, isDeleted: false },
@@ -191,7 +202,7 @@ export const markAllAsRead = async (req, res) => {
 // ✅ Soft Delete one
 export const deleteNotification = async (req, res) => {
   try {
-    const receiverId = req.user._id;
+    const receiverId = req.userId; // ✅ FIXED
     const { id } = req.params;
 
     const notif = await Notification.findOneAndUpdate(
@@ -201,7 +212,9 @@ export const deleteNotification = async (req, res) => {
     );
 
     if (!notif) {
-      return res.status(404).json({ success: false, message: "Notification not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Notification not found" });
     }
 
     res.status(200).json({

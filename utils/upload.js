@@ -1,30 +1,39 @@
 import multer from "multer";
-import path from "path";
 
-const storage = multer.diskStorage({
-  destination: "uploads/chat",
-  filename: (_, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, Date.now() + ext);
-  },
-});
+/* =========================================================
+   MULTER CONFIG (MEMORY STORAGE for Cloudinary)
+========================================================= */
 
-const fileFilter = (_, file, cb) => {
+const storage = multer.memoryStorage();
+
+const fileFilter = (req, file, cb) => {
   const allowed = [
-    "application/pdf",
     "image/png",
     "image/jpeg",
+    "image/jpg",
+    "application/pdf",
     "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "application/vnd.ms-excel",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   ];
 
-  cb(null, allowed.includes(file.mimetype));
+  if (allowed.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(
+      new Error("Unsupported file type. Upload image, pdf, doc, or excel only"),
+      false
+    );
+  }
 };
 
-export default multer({
+const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: {
+    fileSize: 2 * 1024 * 1024, // ✅ 2 MB (as per frontend)
+  },
   fileFilter,
 });
+
+export default upload;

@@ -9,83 +9,103 @@ import Message from "../models/Message.js";
 export const getAllowedUsers = async (req, res) => {
   try {
     const userId = req.user.id;
+
     const me = await User.findById(userId).select("_id role name email");
     if (!me) return res.status(404).json({ message: "User not found" });
 
     let allowedUsers = [];
     let allowedTeams = [];
 
+    /* =====================================================
+       ADMIN / HR
+    ===================================================== */
     if (me.role === "admin" || me.role === "hr") {
       allowedUsers = await User.find({ _id: { $ne: userId } }).select(
         "_id name email role"
       );
+
       allowedTeams = await Team.find({}).select(
         "_id team_name team_leader members"
       );
-    } else if (me.role === "manager") {
+    }
+
+    /* =====================================================
+       MANAGER
+    ===================================================== */
+    else if (me.role === "manager") {
       const myTeams = await Team.find({ team_leader: userId }).select(
         "_id team_name team_leader members"
       );
 
-      const teamEmployees = myTeams.flatMap((t) =>
-        (t.members || []).map((m) => m.employee)
+      const employeeIds = myTeams.flatMap((t) =>
+        t.members.map((m) => m.employee)
       );
 
       allowedUsers = await User.find({
         _id: { $ne: userId },
         $or: [
-          { _id: { $in: teamEmployees } },
-          { role: { $in: ["admin", "hr"] } },
+          { role: "hr" },
+          { role: "admin" },
+          { _id: { $in: employeeIds } },
         ],
       }).select("_id name email role");
 
       allowedTeams = myTeams;
-    } else {
-      const myTeam = await Team.findOne({ "members.employee": userId });
-      if (!myTeam) {
+    }
+
+    /* =====================================================
+       EMPLOYEE (✅ MAIN FIX HERE)
+    ===================================================== */
+    else if (me.role === "employee") {
+      const myTeams = await Team.find({
+        "members.employee": userId,
+      }).select("_id team_name team_leader members");
+
+      if (!myTeams.length) {
+        // Agar employee kisi team me nahi hai → sirf HR
         allowedUsers = await User.find({ role: "hr" }).select(
           "_id name email role"
         );
-        return res.json({ me, allowedUsers, allowedTeams: [] });
+
+        return res.json({
+          me,
+          allowedUsers,
+          allowedTeams: [],
+        });
       }
 
-      const teammates = myTeam.members
-        .map((m) => m.employee)
-        .filter((id) => id.toString() !== userId);
+      // 👉 Usually employee ek hi team me hota hai
+      const myTeam = myTeams[0];
+
+      const managerId = myTeam.team_leader;
+
+      const teammateIds = myTeam.members
+        .map((m) => m.employee.toString())
+        .filter((id) => id !== userId.toString());
 
       allowedUsers = await User.find({
         _id: { $ne: userId },
-        $or: [{ _id: { $in: teammates } }, { _id: myTeam.team_leader }, { role: "hr" }],
+        $or: [
+          { role: "hr" },              // ✅ HR
+          { _id: managerId },          // ✅ Manager
+          { _id: { $in: teammateIds } } // ✅ Teammates
+        ],
       }).select("_id name email role");
 
-      allowedTeams = [myTeam];
+      allowedTeams = myTeams; // ✅ sirf apni team(s)
     }
 
-    // EXTRA: already chatted users
-    const conversations = await Conversation.find({
-      type: "dm",
-      members: userId,
-    }).select("members");
-
-    const extraIds = conversations
-      .flatMap((c) => c.members)
-      .filter((id) => id.toString() !== userId.toString());
-
-    const extraUsers = await User.find({ _id: { $in: extraIds } }).select(
-      "_id name email role"
-    );
-
-    const map = new Map();
-    [...allowedUsers, ...extraUsers].forEach((u) =>
-      map.set(u._id.toString(), u)
-    );
-
-    res.json({ me, allowedUsers: Array.from(map.values()), allowedTeams });
-  } catch (e) {
-    console.log("❌ getAllowedUsers:", e);
-    res.status(500).json({ message: "Server error" });
+    return res.json({
+      me,
+      allowedUsers,
+      allowedTeams,
+    });
+  } catch (error) {
+    console.log("❌ getAllowedUsers Error:", error);
+    return res.status(500).json({ message: "Server error" });
   }
 };
+
 
 /* =========================================================
    PERMISSION HELPERS

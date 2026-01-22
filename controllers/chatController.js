@@ -17,9 +17,7 @@ export const getAllowedUsers = async (req, res) => {
     let allowedUsers = [];
     let allowedTeams = [];
 
-    /* =====================================================
-       ADMIN / HR
-    ===================================================== */
+    // ADMIN / HR
     if (me.role === "admin" || me.role === "hr") {
       allowedUsers = await User.find({ _id: { $ne: userId } }).select(
         "_id name email role"
@@ -30,16 +28,14 @@ export const getAllowedUsers = async (req, res) => {
       );
     }
 
-    /* =====================================================
-       MANAGER
-    ===================================================== */
+    // MANAGER
     else if (me.role === "manager") {
       const myTeams = await Team.find({ team_leader: userId }).select(
         "_id team_name team_leader members"
       );
 
       const employeeIds = myTeams.flatMap((t) =>
-        t.members.map((m) => m.employee)
+        (t.members || []).map((m) => m.employee)
       );
 
       allowedUsers = await User.find({
@@ -54,30 +50,20 @@ export const getAllowedUsers = async (req, res) => {
       allowedTeams = myTeams;
     }
 
-    /* =====================================================
-       EMPLOYEE (✅ MAIN FIX HERE)
-    ===================================================== */
+    // EMPLOYEE
     else if (me.role === "employee") {
       const myTeams = await Team.find({
         "members.employee": userId,
       }).select("_id team_name team_leader members");
 
       if (!myTeams.length) {
-        // Agar employee kisi team me nahi hai → sirf HR
         allowedUsers = await User.find({ role: "hr" }).select(
           "_id name email role"
         );
-
-        return res.json({
-          me,
-          allowedUsers,
-          allowedTeams: [],
-        });
+        return res.json({ me, allowedUsers, allowedTeams: [] });
       }
 
-      // 👉 Usually employee ek hi team me hota hai
       const myTeam = myTeams[0];
-
       const managerId = myTeam.team_leader;
 
       const teammateIds = myTeam.members
@@ -87,26 +73,21 @@ export const getAllowedUsers = async (req, res) => {
       allowedUsers = await User.find({
         _id: { $ne: userId },
         $or: [
-          { role: "hr" },              // ✅ HR
-          { _id: managerId },          // ✅ Manager
-          { _id: { $in: teammateIds } } // ✅ Teammates
+          { role: "hr" },
+          { _id: managerId },
+          { _id: { $in: teammateIds } },
         ],
       }).select("_id name email role");
 
-      allowedTeams = myTeams; // ✅ sirf apni team(s)
+      allowedTeams = myTeams;
     }
 
-    return res.json({
-      me,
-      allowedUsers,
-      allowedTeams,
-    });
+    return res.json({ me, allowedUsers, allowedTeams });
   } catch (error) {
     console.log("❌ getAllowedUsers Error:", error);
     return res.status(500).json({ message: "Server error" });
   }
 };
-
 
 /* =========================================================
    PERMISSION HELPERS
@@ -116,14 +97,15 @@ const isUserAllowed = async (meId, targetId) => {
   const target = await User.findById(targetId);
   if (!me || !target) return false;
 
-  if (me.role === "admin") return true;
-  if (me.role === "hr") return true;
+  if (["admin", "hr"].includes(me.role)) return true;
 
   if (me.role === "manager") {
     if (["admin", "hr"].includes(target.role)) return true;
     const teams = await Team.find({ team_leader: meId });
     return teams.some((t) =>
-      t.members.some((m) => m.employee.toString() === targetId.toString())
+      (t.members || []).some(
+        (m) => m.employee.toString() === targetId.toString()
+      )
     );
   }
 
@@ -131,6 +113,7 @@ const isUserAllowed = async (meId, targetId) => {
     if (target.role === "hr") return true;
     const team = await Team.findOne({ "members.employee": meId });
     if (!team) return false;
+
     return (
       team.team_leader?.toString() === targetId.toString() ||
       team.members.some(
@@ -177,11 +160,12 @@ export const createOrGetConversation = async (req, res) => {
     members: { $all: [meId, receiverId] },
   });
 
-  if (!convo)
+  if (!convo) {
     convo = await Conversation.create({
       type: "dm",
       members: [meId, receiverId],
     });
+  }
 
   res.json(convo);
 };
@@ -197,13 +181,14 @@ export const createOrGetTeamConversation = async (req, res) => {
 
   if (!convo) {
     const team = await Team.findById(teamId);
+
     convo = await Conversation.create({
       type: "team",
       teamId,
       members: [
         team.team_leader,
-        ...team.members.map((m) => m.employee),
-      ],
+        ...(team.members || []).map((m) => m.employee),
+      ].filter(Boolean),
     });
   }
 
@@ -211,23 +196,23 @@ export const createOrGetTeamConversation = async (req, res) => {
 };
 
 /* =========================================================
-   SEND MESSAGE (TEXT + FILE)
+   SEND MESSAGE (TEXT + FILE) ✅ FINAL SAFE VERSION
 ========================================================= */
 export const sendMessage = async (req, res) => {
   try {
     const meId = req.user.id;
     const { conversationId, text } = req.body;
 
-    if (!conversationId) {
+    if (!conversationId)
       return res.status(400).json({ message: "conversationId required" });
-    }
 
     const convo = await Conversation.findById(conversationId);
-    if (!convo) return res.status(404).json({ message: "Conversation not found" });
+    if (!convo)
+      return res.status(404).json({ message: "Conversation not found" });
 
     let fileData = null;
 
-    /* ================= FILE UPLOAD ================= */
+    // FILE UPLOAD
     if (req.file) {
       const uploadRes = await cloudinary.uploader.upload(
         `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`,
@@ -245,7 +230,6 @@ export const sendMessage = async (req, res) => {
       };
     }
 
-    /* ================= SAVE MESSAGE ================= */
     const msg = await Message.create({
       conversationId,
       senderId: meId,
@@ -259,20 +243,25 @@ export const sendMessage = async (req, res) => {
       lastMessageAt: new Date(),
     });
 
-    /* ================= SOCKET ================= */
+    // SOCKET (🔥 CRASH-PROOF)
     const io = req.app.get("io");
-    if (io) {
+    if (io && Array.isArray(convo.members)) {
       convo.members.forEach((memberId) => {
-        if (memberId.toString() !== meId.toString()) {
-          io.to(memberId.toString()).emit("chat:receiveMessage", msg);
+        if (!memberId) return;
+
+        const memberStr = memberId.toString();
+        const meStr = meId.toString();
+
+        if (memberStr !== meStr) {
+          io.to(memberStr).emit("chat:receiveMessage", msg);
         }
       });
     }
 
     return res.json(msg);
   } catch (error) {
-    console.log("❌ sendMessage error:", error.message);
-    return res.status(500).json({ message: error.message });
+    console.log("❌ sendMessage error:", error);
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -307,24 +296,5 @@ export const markConversationSeen = async (req, res) => {
     { status: "seen" }
   );
 
-  await Conversation.findByIdAndUpdate(conversationId, {
-    $set: { [`unreadCount.${meId}`]: 0 },
-  });
-
   res.json({ success: true });
-};
-
-const uploadToCloudinary = async (file) => {
-  const result = await cloudinary.uploader.upload(
-    `data:${file.mimetype};base64,${file.buffer.toString("base64")}`,
-    {
-      folder: "ems-chat", // folder name in cloudinary
-      resource_type: "auto",
-    }
-  );
-
-  return {
-    url: result.secure_url,
-    public_id: result.public_id,
-  };
 };

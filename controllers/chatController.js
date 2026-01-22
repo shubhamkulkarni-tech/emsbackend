@@ -200,16 +200,15 @@ export const createOrGetTeamConversation = async (req, res) => {
 ========================================================= */
 export const sendMessage = async (req, res) => {
   try {
-    /* ================= AUTH SAFETY ================= */
     if (!req.user || !req.user.id) {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const meId = req.user.id;
+    const meId = String(req.user.id);
     const { conversationId, text } = req.body;
 
     if (!conversationId) {
-      return res.status(400).json({ message: "conversationId required" });
+      return res.status(400).json({ message: "conversationId missing" });
     }
 
     const convo = await Conversation.findById(conversationId);
@@ -217,27 +216,30 @@ export const sendMessage = async (req, res) => {
       return res.status(404).json({ message: "Conversation not found" });
     }
 
-    /* ================= FILE UPLOAD ================= */
     let fileData = null;
 
+    // FILE UPLOAD
     if (req.file) {
-      const uploadRes = await cloudinary.uploader.upload(
-        `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`,
-        {
-          folder: "ems-chat",
-          resource_type: "auto",
-        }
-      );
+      try {
+        const uploadRes = await cloudinary.uploader.upload(
+          `data:${req.file.mimetype};base64,${req.file.buffer.toString(
+            "base64"
+          )}`,
+          { folder: "ems-chat", resource_type: "auto" }
+        );
 
-      fileData = {
-        url: uploadRes.secure_url,
-        name: req.file.originalname,
-        type: req.file.mimetype,
-        size: req.file.size,
-      };
+        fileData = {
+          url: uploadRes.secure_url,
+          name: req.file.originalname,
+          type: req.file.mimetype,
+          size: req.file.size,
+        };
+      } catch (err) {
+        console.error("❌ Cloudinary error:", err);
+        return res.status(500).json({ message: "File upload failed" });
+      }
     }
 
-    /* ================= SAVE MESSAGE ================= */
     const msg = await Message.create({
       conversationId,
       senderId: meId,
@@ -251,27 +253,22 @@ export const sendMessage = async (req, res) => {
       lastMessageAt: new Date(),
     });
 
-    /* ================= SOCKET (100% SAFE) ================= */
     const io = req.app.get("io");
 
     if (io) {
-      convo.members.forEach((memberId) => {
-        if (!memberId) return;
-        if (!meId) return;
-
-        const memberStr = memberId.toString();
-        const meStr = String(meId);
-
-        if (memberStr !== meStr) {
-          io.to(memberStr).emit("chat:receiveMessage", msg);
+      convo.members.forEach((m) => {
+        if (!m) return;
+        const memberId = String(m);
+        if (memberId !== meId) {
+          io.to(memberId).emit("chat:receiveMessage", msg);
         }
       });
     }
 
     return res.json(msg);
   } catch (error) {
-    console.error("❌ sendMessage error:", error);
-    return res.status(500).json({ message: "Server error" });
+    console.error("❌ sendMessage FINAL error:", error);
+    return res.status(500).json({ message: "Internal server error" });
   }
 };
 

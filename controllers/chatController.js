@@ -200,19 +200,26 @@ export const createOrGetTeamConversation = async (req, res) => {
 ========================================================= */
 export const sendMessage = async (req, res) => {
   try {
+    /* ================= AUTH SAFETY ================= */
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
     const meId = req.user.id;
     const { conversationId, text } = req.body;
 
-    if (!conversationId)
+    if (!conversationId) {
       return res.status(400).json({ message: "conversationId required" });
+    }
 
     const convo = await Conversation.findById(conversationId);
-    if (!convo)
+    if (!convo || !Array.isArray(convo.members)) {
       return res.status(404).json({ message: "Conversation not found" });
+    }
 
+    /* ================= FILE UPLOAD ================= */
     let fileData = null;
 
-    // FILE UPLOAD
     if (req.file) {
       const uploadRes = await cloudinary.uploader.upload(
         `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`,
@@ -230,6 +237,7 @@ export const sendMessage = async (req, res) => {
       };
     }
 
+    /* ================= SAVE MESSAGE ================= */
     const msg = await Message.create({
       conversationId,
       senderId: meId,
@@ -243,14 +251,16 @@ export const sendMessage = async (req, res) => {
       lastMessageAt: new Date(),
     });
 
-    // SOCKET (🔥 CRASH-PROOF)
+    /* ================= SOCKET (100% SAFE) ================= */
     const io = req.app.get("io");
-    if (io && Array.isArray(convo.members)) {
+
+    if (io) {
       convo.members.forEach((memberId) => {
         if (!memberId) return;
+        if (!meId) return;
 
         const memberStr = memberId.toString();
-        const meStr = meId.toString();
+        const meStr = String(meId);
 
         if (memberStr !== meStr) {
           io.to(memberStr).emit("chat:receiveMessage", msg);
@@ -260,7 +270,7 @@ export const sendMessage = async (req, res) => {
 
     return res.json(msg);
   } catch (error) {
-    console.log("❌ sendMessage error:", error);
+    console.error("❌ sendMessage error:", error);
     return res.status(500).json({ message: "Server error" });
   }
 };

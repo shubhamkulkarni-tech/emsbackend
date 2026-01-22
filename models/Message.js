@@ -7,19 +7,13 @@ const messageSchema = new mongoose.Schema(
       ref: "Conversation",
       required: true,
     },
-
     senderId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
+    text: { type: String, default: "" },
 
-    text: {
-      type: String,
-      default: "",
-    },
-
-    /* ✅ Document / Image */
     file: {
       url: String,
       name: String,
@@ -27,7 +21,6 @@ const messageSchema = new mongoose.Schema(
       size: Number,
     },
 
-    /* ✅ Read receipts */
     status: {
       type: String,
       enum: ["sent", "delivered", "seen"],
@@ -37,5 +30,4 @@ const messageSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-const Message = mongoose.model("Message", messageSchema);
-export default Message;
+export default mongoose.model("Message", messageSchema);

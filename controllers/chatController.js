@@ -217,51 +217,61 @@ export const sendMessage = async (req, res) => {
     const meId = req.user.id;
     const { conversationId, text } = req.body;
 
-    if (!conversationId || (!text && !req.file))
-      return res.status(400).json({ message: "Invalid message" });
+    if (!conversationId) {
+      return res.status(400).json({ message: "conversationId required" });
+    }
 
     const convo = await Conversation.findById(conversationId);
-    if (!convo || !convo.members.includes(meId))
-      return res.status(403).json({ message: "Not allowed" });
+    if (!convo) return res.status(404).json({ message: "Conversation not found" });
 
+    let fileData = null;
+
+    /* ================= FILE UPLOAD ================= */
+    if (req.file) {
+      const uploadRes = await cloudinary.uploader.upload(
+        `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`,
+        {
+          folder: "ems-chat",
+          resource_type: "auto",
+        }
+      );
+
+      fileData = {
+        url: uploadRes.secure_url,
+        name: req.file.originalname,
+        type: req.file.mimetype,
+        size: req.file.size,
+      };
+    }
+
+    /* ================= SAVE MESSAGE ================= */
     const msg = await Message.create({
       conversationId,
       senderId: meId,
       text: text || "",
-      file: req.file
-        ? {
-            url: `/uploads/chat/${req.file.filename}`,
-            name: req.file.originalname,
-            type: req.file.mimetype,
-            size: req.file.size,
-          }
-        : null,
+      file: fileData,
       status: "sent",
     });
 
-    convo.lastMessage = msg.text || msg.file?.name || "File";
-    convo.lastMessageAt = new Date();
-
-    convo.members.forEach((uid) => {
-      if (uid.toString() !== meId)
-        convo.unreadCount.set(
-          uid.toString(),
-          (convo.unreadCount.get(uid.toString()) || 0) + 1
-        );
+    await Conversation.findByIdAndUpdate(conversationId, {
+      lastMessage: text || (fileData ? "📎 File" : ""),
+      lastMessageAt: new Date(),
     });
 
-    await convo.save();
-
+    /* ================= SOCKET ================= */
     const io = req.app.get("io");
-    convo.members.forEach((uid) => {
-      if (uid.toString() !== meId)
-        io.to(uid.toString()).emit("chat:receiveMessage", msg);
-    });
+    if (io) {
+      convo.members.forEach((memberId) => {
+        if (memberId.toString() !== meId.toString()) {
+          io.to(memberId.toString()).emit("chat:receiveMessage", msg);
+        }
+      });
+    }
 
-    res.json(msg);
-  } catch (e) {
-    console.log("❌ sendMessage:", e);
-    res.status(500).json({ message: "Server error" });
+    return res.json(msg);
+  } catch (error) {
+    console.log("❌ sendMessage error:", error.message);
+    return res.status(500).json({ message: error.message });
   }
 };
 

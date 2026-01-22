@@ -36,11 +36,10 @@ router.post(
    MESSAGES
 ========================================================= */
 
-// Send message (text + file)
 router.post(
   "/message/send",
   auth,
-  upload.single("file"),
+  upload.single("file"), // ✅ IMPORTANT
   sendMessage
 );
 

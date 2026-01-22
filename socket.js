@@ -1,6 +1,13 @@
 import { Server } from "socket.io";
 
-const onlineUsers = new Map(); // userId => socketId
+/*
+  onlineUsers:
+  userId => {
+    socketId,
+    status: "online" | "away" | "busy"
+  }
+*/
+const onlineUsers = new Map();
 
 export const setupSocket = (httpServer) => {
   const io = new Server(httpServer, {
@@ -14,30 +21,49 @@ export const setupSocket = (httpServer) => {
   io.on("connection", (socket) => {
     console.log("✅ Socket connected:", socket.id);
 
-    // ✅ Join user room (VERY IMPORTANT)
+    /* ======================================================
+       JOIN USER ROOM
+    ====================================================== */
     socket.on("join", (userId) => {
-      try {
-        if (!userId) return;
+      if (!userId) return;
 
-        const uid = userId.toString();
+      const uid = userId.toString();
 
-        socket.join(uid);
-        onlineUsers.set(uid, socket.id);
+      socket.join(uid);
 
-        console.log("✅ User joined room:", uid);
+      onlineUsers.set(uid, {
+        socketId: socket.id,
+        status: "online",
+      });
 
-        // ✅ Broadcast online users
-        io.emit("onlineUsers", Array.from(onlineUsers.keys()));
-      } catch (err) {
-        console.log("❌ join error:", err.message);
-      }
+      console.log("✅ User joined:", uid);
+
+      // broadcast status update
+      io.emit("user:statusUpdate", {
+        userId: uid,
+        status: "online",
+      });
+
+      // broadcast online users list
+      io.emit(
+        "onlineUsers",
+        Array.from(onlineUsers.entries()).map(([id, v]) => ({
+          userId: id,
+          status: v.status,
+        }))
+      );
     });
 
     /* ======================================================
-       ✅ CHAT EVENTS (Realtime)
+       USER STATUS (ONLINE / AWAY / BUSY)
     ====================================================== */
+    socket.on("user:online", ({ userId }) => updateStatus(io, userId, "online"));
+    socket.on("user:away", ({ userId }) => updateStatus(io, userId, "away"));
+    socket.on("user:busy", ({ userId }) => updateStatus(io, userId, "busy"));
 
-    // ✅ Optional: typing
+    /* ======================================================
+       TYPING INDICATOR (DM)
+    ====================================================== */
     socket.on("chat:typing", ({ receiverId, senderId }) => {
       if (!receiverId || !senderId) return;
       io.to(receiverId.toString()).emit("chat:typing", { senderId });
@@ -48,46 +74,74 @@ export const setupSocket = (httpServer) => {
       io.to(receiverId.toString()).emit("chat:stopTyping", { senderId });
     });
 
-    // ✅ If you want client-to-client message event (optional)
-    // NOTE: Your main DB save happens via controller route (/message/send)
-    // so this is not required now.
-    socket.on("chat:sendMessage", (payload) => {
-      try {
-        if (!payload?.receiverId) return;
-
-        io.to(payload.receiverId.toString()).emit("chat:receiveMessage", payload);
-      } catch (err) {
-        console.log("❌ chat:sendMessage error:", err.message);
-      }
+    /* ======================================================
+       READ RECEIPTS (SOCKET ONLY NOTIFY)
+       DB update happens in controller
+    ====================================================== */
+    socket.on("chat:messageSeen", ({ conversationId, senderId }) => {
+      if (!conversationId || !senderId) return;
+      io.to(senderId.toString()).emit("chat:messageSeen", {
+        conversationId,
+      });
     });
 
-    /* ======================================================
-       ✅ NOTIFICATION EVENTS (Optional)
-    ====================================================== */
-    socket.on("notification:markSeen", ({ userId }) => {
-      if (!userId) return;
-      io.to(userId.toString()).emit("notification:refresh", {
-        message: "Refresh notifications",
+    socket.on("chat:messageDelivered", ({ messageId, receiverId }) => {
+      if (!messageId || !receiverId) return;
+      io.to(receiverId.toString()).emit("chat:messageDelivered", {
+        messageId,
       });
     });
 
     /* ======================================================
-       ✅ DISCONNECT
+       DISCONNECT
     ====================================================== */
     socket.on("disconnect", () => {
       console.log("❌ Socket disconnected:", socket.id);
 
-      // remove from map
-      for (const [userId, sockId] of onlineUsers.entries()) {
-        if (sockId === socket.id) {
+      let disconnectedUserId = null;
+
+      for (const [userId, data] of onlineUsers.entries()) {
+        if (data.socketId === socket.id) {
+          disconnectedUserId = userId;
           onlineUsers.delete(userId);
           break;
         }
       }
 
-      io.emit("onlineUsers", Array.from(onlineUsers.keys()));
+      if (disconnectedUserId) {
+        io.emit("user:statusUpdate", {
+          userId: disconnectedUserId,
+          status: "offline",
+        });
+
+        io.emit(
+          "onlineUsers",
+          Array.from(onlineUsers.entries()).map(([id, v]) => ({
+            userId: id,
+            status: v.status,
+          }))
+        );
+      }
     });
   });
 
   return io;
 };
+
+/* ======================================================
+   HELPER: UPDATE STATUS
+====================================================== */
+function updateStatus(io, userId, status) {
+  if (!userId) return;
+
+  const uid = userId.toString();
+  const existing = onlineUsers.get(uid);
+  if (!existing) return;
+
+  onlineUsers.set(uid, {
+    ...existing,
+    status,
+  });
+
+  io.emit("user:statusUpdate", { userId: uid, status });
+}

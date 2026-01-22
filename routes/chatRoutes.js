@@ -1,5 +1,6 @@
 import express from "express";
-import authMiddleware from "../middleware/authMiddleware.js";
+import auth from "../middleware/authMiddleware.js";
+import upload from "../utils/upload.js";
 
 import {
   getAllowedUsers,
@@ -7,25 +8,54 @@ import {
   createOrGetTeamConversation,
   sendMessage,
   getMessagesByConversation,
+  markConversationSeen,
 } from "../controllers/chatController.js";
 
 const router = express.Router();
 
-// ✅ Allowed users + allowed teams
-router.get("/allowed-users", authMiddleware, getAllowedUsers);
+/* =========================================================
+   ALLOWED USERS + TEAMS
+========================================================= */
+router.get("/allowed-users", auth, getAllowedUsers);
 
-// ✅ Create / Get DM conversation
-router.post("/conversation/create", authMiddleware, createOrGetConversation);
+/* =========================================================
+   CONVERSATIONS
+========================================================= */
 
-// ✅ Create / Get TEAM conversation (Group chat)
+// DM conversation
+router.post("/conversation/create", auth, createOrGetConversation);
+
+// Team group conversation
 router.post(
   "/conversation/team/create",
-  authMiddleware,
+  auth,
   createOrGetTeamConversation
 );
 
-// ✅ Messages
-router.post("/message/send", authMiddleware, sendMessage);
-router.get("/message/:conversationId", authMiddleware, getMessagesByConversation);
+/* =========================================================
+   MESSAGES
+========================================================= */
+
+// Send message (text + file)
+router.post(
+  "/message/send",
+  auth,
+  upload.single("file"),
+  sendMessage
+);
+
+// Get messages of a conversation
+router.get(
+  "/message/:conversationId",
+  auth,
+  getMessagesByConversation
+);
+
+// Mark conversation as seen (read receipt)
+router.post(
+  "/message/seen",
+  auth,
+  markConversationSeen
+);
 
 export default router;

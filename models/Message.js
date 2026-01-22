@@ -7,13 +7,27 @@ const messageSchema = new mongoose.Schema(
       ref: "Conversation",
       required: true,
     },
+
     senderId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
-    text: { type: String, required: true },
 
+    text: {
+      type: String,
+      default: "",
+    },
+
+    /* ✅ Document / Image */
+    file: {
+      url: String,
+      name: String,
+      type: String,
+      size: Number,
+    },
+
+    /* ✅ Read receipts */
     status: {
       type: String,
       enum: ["sent", "delivered", "seen"],

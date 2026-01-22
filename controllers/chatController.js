@@ -2,6 +2,7 @@ import User from "../models/User.js";
 import Team from "../models/Team.js";
 import Conversation from "../models/Conversation.js";
 import Message from "../models/Message.js";
+import cloudinary from "../config/cloudinary.js";
 
 /* =========================================================
    ALLOWED USERS + TEAMS
@@ -311,4 +312,19 @@ export const markConversationSeen = async (req, res) => {
   });
 
   res.json({ success: true });
+};
+
+const uploadToCloudinary = async (file) => {
+  const result = await cloudinary.uploader.upload(
+    `data:${file.mimetype};base64,${file.buffer.toString("base64")}`,
+    {
+      folder: "ems-chat", // folder name in cloudinary
+      resource_type: "auto",
+    }
+  );
+
+  return {
+    url: result.secure_url,
+    public_id: result.public_id,
+  };
 };

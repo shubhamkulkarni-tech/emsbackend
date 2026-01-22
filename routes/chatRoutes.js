@@ -14,18 +14,22 @@ import {
 const router = express.Router();
 
 /* =========================================================
-   ALLOWED USERS + TEAMS
+   ✅ ALLOWED USERS + TEAMS
 ========================================================= */
 router.get("/allowed-users", auth, getAllowedUsers);
 
 /* =========================================================
-   CONVERSATIONS
+   ✅ CONVERSATIONS
 ========================================================= */
 
-// DM conversation
-router.post("/conversation/create", auth, createOrGetConversation);
+// Direct Message (DM)
+router.post(
+  "/conversation/create",
+  auth,
+  createOrGetConversation
+);
 
-// Team group conversation
+// Team Group Conversation
 router.post(
   "/conversation/team/create",
   auth,
@@ -33,24 +37,25 @@ router.post(
 );
 
 /* =========================================================
-   MESSAGES
+   ✅ MESSAGES
 ========================================================= */
 
+// Send message (text + file upload)
 router.post(
   "/message/send",
   auth,
-  upload.single("file"), // ✅ IMPORTANT
+  upload.single("file"), // 👈 Cloudinary + Multer
   sendMessage
 );
 
-// Get messages of a conversation
+// Get all messages of a conversation
 router.get(
   "/message/:conversationId",
   auth,
   getMessagesByConversation
 );
 
-// Mark conversation as seen (read receipt)
+// Mark messages as seen (read receipt)
 router.post(
   "/message/seen",
   auth,

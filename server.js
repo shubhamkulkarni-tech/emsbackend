@@ -45,22 +45,24 @@ const corsOptions = {
       "http://localhost:5000",
       "http://127.0.0.1:5173",
       "http://127.0.0.1:5000",
-      "https://ems.wordlanetech.com", // ✅ Hostinger Frontend
+      "https://ems.wordlanetech.com",
+      "https://backend-node-5ylk.onrender.com"
     ];
 
-    // allow no-origin (Postman/curl)
+    // Allow requests with no origin (like mobile apps or curl)
     if (!origin) return callback(null, true);
 
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes(origin)) {
+      callback(null, true);
     } else {
-      console.log("❌ CORS blocked origin:", origin);
-      return callback(new Error("Not allowed by CORS"));
+      console.error(`❌ CORS Error: Origin ${origin} not allowed`);
+      callback(new Error("Not allowed by CORS"));
     }
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+  optionsSuccessStatus: 200 // Some legacy browsers (IE11, various SmartTVs) choke on 204
 };
 
 app.use(cors(corsOptions));

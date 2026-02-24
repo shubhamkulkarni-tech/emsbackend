@@ -31,7 +31,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const server = http.createServer(app);
 
-// ✅ REQUIRED FOR RENDER COOKIES
+// ================= RENDER =================
 app.set("trust proxy", 1);
 
 // ================= CORS =================
@@ -41,32 +41,27 @@ const allowedOrigins = [
   "http://localhost:5174",
   "http://localhost:5175",
   "http://127.0.0.1:5173",
-  "https://ems.wordlanetech.com"
+  "https://ems.wordlanetech.com",
+  "https://wordlanetech.com"
 ];
 
 const corsOptions = {
-  origin: function (origin, callback) {
-    // For credentials: true, the origin MUST be exact.
+  origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, origin || true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
+      return callback(null, true);
     }
+    return callback(new Error("Not allowed by CORS"));
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
-  optionsSuccessStatus: 200
+  allowedHeaders: ["Content-Type", "Authorization"]
 };
 
 app.use(cors(corsOptions));
 
-// Handle preflight for all routes (Express 5 syntax)
-app.options("*", cors(corsOptions)); 
-
-// ================= DEBUG LOGGING =================
+// ✅ Node 22 SAFE preflight handler
 app.use((req, res, next) => {
-  console.log(`📡 ${req.method} ${req.url} - Origin: ${req.headers.origin || "No Origin"}`);
+  if (req.method === "OPTIONS") return res.sendStatus(200);
   next();
 });
 
@@ -104,10 +99,7 @@ cron.schedule(
 // ================= HEALTH =================
 
 app.get("/api/health", (req, res) => {
-  res.json({ 
-    status: "OK",
-    version: "CORS_FIX_V3_REFLECTIVE" // DIAGNOSTIC TAG
-  });
+  res.json({ status: "OK" });
 });
 
 // ================= ERROR =================
@@ -118,7 +110,7 @@ app.use((err, req, res, next) => {
   if (err.message === "Not allowed by CORS") {
     return res.status(403).json({
       message: "CORS blocked",
-      origin: req.headers.origin,
+      origin: req.headers.origin
     });
   }
 

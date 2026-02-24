@@ -36,12 +36,21 @@ app.set("trust proxy", 1);
 
 const allowedOrigins = [
   "http://localhost:5173",
+  "http://localhost:5174",
+  "http://localhost:5175",
   "http://127.0.0.1:5173",
   "https://ems.wordlanetech.com"
 ];
 
 const corsOptions = {
-  origin: allowedOrigins,
+  origin: function (origin, callback) {
+    // Reflect the origin if it matches the whitelist
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, origin || true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
@@ -49,7 +58,6 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
 
 // ================= MIDDLEWARE =================
 

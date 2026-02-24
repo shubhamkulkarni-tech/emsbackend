@@ -7,8 +7,7 @@ import { fileURLToPath } from "url";
 import cron from "node-cron";
 import http from "http";
 
-
-// --- ROUTES IMPORTS ---
+// ROUTES
 import userRoutes from "./routes/userRoutes.js";
 import teamRoutes from "./routes/teamRoutes.js";
 import dashboardRoute from "./routes/dashboardRoutes.js";
@@ -18,63 +17,58 @@ import leaveRoutes from "./routes/leaveRoutes.js";
 import taskRoutes from "./routes/tasks.Routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
 import employeeDocumentRoutes from "./routes/documentRoutes.js";
-
 import payrollRoutes from "./routes/payrollRoutes.js";
 
-// --- CONTROLLER IMPORTS ---
+// CONTROLLER
 import { autoPunchOutCron } from "./controllers/attendanceController.js";
 
-// Fix for __dirname in ES modules
+dotenv.config();
+
+// Fix __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// Load environment variables
-dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
 
-// ✅ TRUST PROXY (Required for Render)
+// ✅ REQUIRED FOR RENDER COOKIES
 app.set("trust proxy", 1);
 
-// ✅ CORS CONFIG (Hostinger Frontend + Localhost)
+// ================= CORS =================
+
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "https://ems.wordlanetech.com"
+];
+
 const corsOptions = {
   origin: function (origin, callback) {
-    const allowedOrigins = [
-      "http://localhost:5173",
-      "http://localhost:5000",
-      "http://127.0.0.1:5173",
-      "http://127.0.0.1:5000",
-      "https://ems.wordlanetech.com",
-      "https://backend-node-5ylk.onrender.com"
-    ];
-
-    // Allow requests with no origin (like mobile apps or curl)
     if (!origin) return callback(null, true);
 
-    if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes(origin)) {
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      console.error(`❌ CORS Error: Origin ${origin} not allowed`);
       callback(new Error("Not allowed by CORS"));
     }
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
-  optionsSuccessStatus: 200 // Some legacy browsers (IE11, various SmartTVs) choke on 204
+  allowedHeaders: ["Content-Type", "Authorization"],
 };
 
 app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 
-// ✅ Middleware
+// ================= MIDDLEWARE =================
+
 app.use(express.json());
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(express.urlencoded({ extended: true }));
 
-// ✅ Static uploads
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// ✅ API ROUTES
+// ================= ROUTES =================
+
 app.use("/api/users", userRoutes);
 app.use("/api/teams", teamRoutes);
 app.use("/api/dashboard", dashboardRoute);
@@ -83,67 +77,63 @@ app.use("/api/attendance", attendanceRouter);
 app.use("/api/leaves", leaveRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/notifications", notificationRoutes);
-
-app.use("/uploads", express.static("uploads"));
 app.use("/api/documents", employeeDocumentRoutes);
-
 app.use("/api/payroll", payrollRoutes);
 
+// ================= CRON =================
 
-// ✅ AUTO PUNCH OUT CRON JOB
 cron.schedule(
   "1 18 * * *",
   () => {
-    console.log("⏰ [CRON] Running Auto Punch Out Job at 18:01...");
+    console.log("⏰ Auto Punch Out Running...");
     autoPunchOutCron();
   },
   { timezone: "Asia/Kolkata" }
 );
 
-// ✅ Health check
+// ================= HEALTH =================
+
 app.get("/api/health", (req, res) => {
-  res.status(200).json({
-    status: "OK",
-    message: "Server is running",
-    timestamp: new Date().toISOString(),
-  });
+  res.json({ status: "OK" });
 });
 
-// ✅ Error handling middleware
+// ================= ERROR =================
+
 app.use((err, req, res, next) => {
-  console.error("❌ Error:", err.stack);
+  console.error(err);
 
   if (err.message === "Not allowed by CORS") {
     return res.status(403).json({
-      message: "CORS error: Origin not allowed",
+      message: "CORS blocked",
       origin: req.headers.origin,
     });
   }
 
-  res.status(500).json({
-    message: "Something went wrong!",
-    error: process.env.NODE_ENV === "development" ? err.message : {},
-  });
+  res.status(500).json({ message: "Server error" });
 });
 
-// ✅ 404 handler (API only)
+// ================= 404 =================
+
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
 
-// ✅ MongoDB connection
+// ================= DB =================
+
 if (!process.env.MONGO_URI) {
-  console.error("❌ MONGO_URI is not defined in .env file");
+  console.log("❌ MONGO_URI missing");
   process.exit(1);
 }
 
 mongoose
   .connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ Database Connected"))
-  .catch((err) => console.error("❌ MongoDB Error:", err));
+  .then(() => console.log("✅ Mongo Connected"))
+  .catch((err) => console.log(err));
+
+// ================= START =================
 
 const PORT = process.env.PORT || 5000;
 
 server.listen(PORT, () => {
-  console.log(`🚀 Server running on port: ${PORT}`);
+  console.log(`🚀 Server running on ${PORT}`);
 });

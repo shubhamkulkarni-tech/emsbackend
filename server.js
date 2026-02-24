@@ -93,7 +93,10 @@ cron.schedule(
 // ================= HEALTH =================
 
 app.get("/api/health", (req, res) => {
-  res.json({ status: "OK" });
+  res.json({ 
+    status: "OK",
+    version: "CORS_FIX_V3_REFLECTIVE" // DIAGNOSTIC TAG
+  });
 });
 
 // ================= ERROR =================

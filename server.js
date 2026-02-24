@@ -34,6 +34,8 @@ const server = http.createServer(app);
 // ✅ REQUIRED FOR RENDER COOKIES
 app.set("trust proxy", 1);
 
+// ================= CORS =================
+
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
@@ -44,7 +46,7 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Reflect the origin if it matches the whitelist
+    // For credentials: true, the origin MUST be exact.
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, origin || true);
     } else {
@@ -58,6 +60,15 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+// Handle preflight for all routes (Express 5 syntax)
+app.options("*", cors(corsOptions)); 
+
+// ================= DEBUG LOGGING =================
+app.use((req, res, next) => {
+  console.log(`📡 ${req.method} ${req.url} - Origin: ${req.headers.origin || "No Origin"}`);
+  next();
+});
 
 // ================= MIDDLEWARE =================
 

@@ -2,7 +2,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 
-const dir = "uploads/kyc";
+const dir = "uploads/documents";
 if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
 const storage = multer.diskStorage({
@@ -20,7 +20,7 @@ const fileFilter = (req, file, cb) => {
   else cb(new Error("Only JPG/PNG/PDF allowed"), false);
 };
 
-export const uploadKycDocs = multer({
+export const uploadOnboardingDocs = multer({
   storage,
   fileFilter,
 }).fields([

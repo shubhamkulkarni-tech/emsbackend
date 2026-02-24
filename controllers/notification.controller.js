@@ -27,9 +27,7 @@ export const createNotification = async (req, res) => {
       meta,
     });
 
-    // ✅ Real-time socket emit
-    const io = req.app.get("io");
-    if (io) io.to(receiverId.toString()).emit("newNotification", notif);
+
 
     res.status(201).json({
       success: true,
@@ -68,19 +66,7 @@ export const broadcastNotification = async (req, res) => {
       meta,
     });
 
-    // ✅ socket emit
-    const io = req.app.get("io");
-    if (io) {
-      receiverIds.forEach((id) => {
-        io.to(id.toString()).emit("newNotification", {
-          title,
-          message,
-          type,
-          priority,
-          link,
-        });
-      });
-    }
+
 
     res.status(201).json({
       success: true,

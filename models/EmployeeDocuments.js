@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const employeeKYCSchema = new mongoose.Schema(
+const employeeDocumentsSchema = new mongoose.Schema(
   {
     employeeId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -43,4 +43,4 @@ const employeeKYCSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-export default mongoose.model("EmployeeKYC", employeeKYCSchema);
+export default mongoose.model("EmployeeDocuments", employeeDocumentsSchema);

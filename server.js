@@ -6,7 +6,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import cron from "node-cron";
 import http from "http";
-import { setupSocket } from "./socket.js";
+
 
 // --- ROUTES IMPORTS ---
 import userRoutes from "./routes/userRoutes.js";
@@ -17,8 +17,9 @@ import attendanceRouter from "./routes/attendanceRoutes.js";
 import leaveRoutes from "./routes/leaveRoutes.js";
 import taskRoutes from "./routes/tasks.Routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
-import employeeKycRoutes from "./routes/kycRoutes.js";
-import chatRoutes from "./routes/chatRoutes.js";
+import employeeDocumentRoutes from "./routes/documentRoutes.js";
+
+import payrollRoutes from "./routes/payrollRoutes.js";
 
 // --- CONTROLLER IMPORTS ---
 import { autoPunchOutCron } from "./controllers/attendanceController.js";
@@ -32,9 +33,6 @@ dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
-const io = setupSocket(server);
-
-app.set("io", io);
 
 // ✅ TRUST PROXY (Required for Render)
 app.set("trust proxy", 1);
@@ -85,8 +83,9 @@ app.use("/api/tasks", taskRoutes);
 app.use("/api/notifications", notificationRoutes);
 
 app.use("/uploads", express.static("uploads"));
-app.use("/api/kyc", employeeKycRoutes);
-app.use("/api/chat", chatRoutes);
+app.use("/api/documents", employeeDocumentRoutes);
+
+app.use("/api/payroll", payrollRoutes);
 
 
 // ✅ AUTO PUNCH OUT CRON JOB
@@ -145,5 +144,4 @@ const PORT = process.env.PORT || 5000;
 
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port: ${PORT}`);
-  console.log(`🔌 Socket.IO running ✅`);
 });

@@ -14,7 +14,6 @@ const sendNotification = async ({
   type = "general",
   priority = "normal",
   link = "/tasks",
-  io,
 }) => {
   // Ensure receiverIds is an array
   const targets = Array.isArray(receiverIds) ? receiverIds : [receiverIds];
@@ -34,10 +33,7 @@ const sendNotification = async ({
         link,
       });
 
-      // 2. Emit Real-time via Socket
-      if (io) {
-        io.to(id.toString()).emit("newNotification", notif);
-      }
+
     } catch (err) {
       console.error("Notification Error:", err);
     }
@@ -209,7 +205,7 @@ export const addTask = async (req, res) => {
     }
 
     const taskId = await generateTaskId();
-    const io = req.app.get("io");
+
 
     const {
       title,
@@ -285,7 +281,6 @@ export const addTask = async (req, res) => {
         title: "New Task Assigned 🎯",
         message: `You have been assigned a new task: ${title}`,
         type: "general",
-        io,
       });
     }
 
@@ -306,7 +301,6 @@ export const addTask = async (req, res) => {
           type: "general",
           priority: "normal",
           link: "/tasks",
-          io,
         });
       }
     } catch (err) {
@@ -374,17 +368,13 @@ export const updateTask = async (req, res) => {
       .populate("reviewers", "name email");
 
     // ✅ Notify Assignees about the update
-    const io = req.app.get("io");
-    if (io) {
-      await sendNotification({
-        receiverIds: updatedTask.assignedTo,
-        senderId: req.user.id,
-        title: "Task Updated 📝",
-        message: `Task "${updatedTask.title}" details have been updated.`,
-        type: "general",
-        io,
-      });
-    }
+    await sendNotification({
+      receiverIds: updatedTask.assignedTo,
+      senderId: req.user.id,
+      title: "Task Updated 📝",
+      message: `Task "${updatedTask.title}" details have been updated.`,
+      type: "general",
+    });
 
     res.status(200).json({ message: "Task updated successfully ✅", task: updatedTask });
   } catch (error) {
@@ -409,18 +399,14 @@ export const deleteTask = async (req, res) => {
     await Task.findByIdAndDelete(id);
 
     // ✅ Notify Assignees that task is deleted
-    const io = req.app.get("io");
-    if (io) {
-      await sendNotification({
-        receiverIds: task.assignedTo,
-        senderId: req.user.id,
-        title: "Task Deleted 🗑️",
-        message: `Task "${task.title}" has been deleted by Admin.`,
-        type: "general",
-        priority: "high",
-        io,
-      });
-    }
+    await sendNotification({
+      receiverIds: task.assignedTo,
+      senderId: req.user.id,
+      title: "Task Deleted 🗑️",
+      message: `Task "${task.title}" has been deleted by Admin.`,
+      type: "general",
+      priority: "high",
+    });
 
     res.status(200).json({ message: "Task deleted successfully ✅" });
   } catch (error) {
@@ -452,7 +438,6 @@ export const acceptTask = async (req, res) => {
     await task.save();
 
     // ✅ Notify Creator and Reviewers
-    const io = req.app.get("io");
     const receivers = [task.createdBy, ...task.reviewers];
     
     await sendNotification({
@@ -461,7 +446,6 @@ export const acceptTask = async (req, res) => {
       title: "Task Started 🚀",
       message: `${req.user.name} has started working on task: ${task.title}`,
       type: "general",
-      io,
     });
 
     res.status(200).json({ message: "Task accepted. Status is now 'In Progress'.", task });
@@ -490,7 +474,6 @@ export const submitTaskForReview = async (req, res) => {
     await task.save();
 
     // ✅ Notify Creator and Reviewers
-    const io = req.app.get("io");
     const receivers = [task.createdBy, ...task.reviewers];
 
     await sendNotification({
@@ -500,7 +483,6 @@ export const submitTaskForReview = async (req, res) => {
       message: `${req.user.name} submitted task "${task.title}" for review.`,
       type: "general",
       priority: "high",
-      io,
     });
 
     res.status(200).json({ message: "Task submitted for review.", task });
@@ -533,7 +515,7 @@ export const reviewTask = async (req, res) => {
       return res.status(403).json({ error: "You are not authorized to review this task" });
     }
 
-    const io = req.app.get("io");
+
 
     if (action === "approve") {
       task.progressStatus = "Completed";
@@ -546,7 +528,6 @@ export const reviewTask = async (req, res) => {
         title: "Task Approved ✅",
         message: `Great work! Your task "${task.title}" was approved.`,
         type: "general",
-        io,
       });
 
     } else if (action === "revert") {
@@ -565,7 +546,6 @@ export const reviewTask = async (req, res) => {
         message: `Your task "${task.title}" has been reverted. Please check comments.`,
         type: "general",
         priority: "high",
-        io,
       });
 
     } else {

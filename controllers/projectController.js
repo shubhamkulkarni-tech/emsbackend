@@ -29,7 +29,7 @@ const generateUniqueProjectId = async () => {
 ================================ */
 const notifyUsers = async ({ req, receiverIds = [], title, message, link = "/projects" }) => {
   try {
-    const io = req.app.get("io");
+
 
     const uniqueReceivers = [...new Set(receiverIds.map((id) => id.toString()))];
 
@@ -44,7 +44,7 @@ const notifyUsers = async ({ req, receiverIds = [], title, message, link = "/pro
         link,
       });
 
-      if (io) io.to(rid.toString()).emit("newNotification", notif);
+
     }
   } catch (err) {
     console.log("❌ notifyUsers error:", err.message);

@@ -19,8 +19,24 @@ const userSchema = new mongoose.Schema({
   joining_date: { type: String },
   dob: { type: String },
   gender: { type: String, enum: ['Male', 'Female', 'Other'] },
+  reportingTo: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User',
+    default: null,
+    index: true
+  },
+  companyId: { 
+    type: String, 
+    default: "WLT",
+    index: true
+  },
+  status: { 
+    type: String, 
+    enum: ['active', 'inactive'], 
+    default: 'active' 
+  },
   password: { type: String, required: true }
-});
+}, { timestamps: true });
 
 const User = mongoose.model('User', userSchema);
 export default User;

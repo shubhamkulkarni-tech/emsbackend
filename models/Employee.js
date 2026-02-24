@@ -85,6 +85,17 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    reportingTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
+    companyId: {
+      type: String,
+      default: "WLT",
+      index: true,
+    },
   },
   { timestamps: true }
 );

@@ -1,5 +1,6 @@
 import User from "../models/User.js";
 import Notification from "../models/Notification.js";
+import Team from "../models/Team.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import multer from "multer";
@@ -18,7 +19,6 @@ const sendNotification = async ({
   type = "general",
   priority = "normal",
   link = "/profile",
-  io,
 }) => {
   // Ensure receiverIds is an array
   const targets = Array.isArray(receiverIds) ? receiverIds : [receiverIds];
@@ -38,10 +38,7 @@ const sendNotification = async ({
         link,
       });
 
-      // 2. Emit Real-time via Socket
-      if (io) {
-        io.to(id.toString()).emit("newNotification", notif);
-      }
+
     } catch (err) {
       console.error("Notification Error:", err);
     }
@@ -125,15 +122,10 @@ export const createUser = async (req, res) => {
       location,
       address,
       phone,
+      gender,
       joining_date,
+      reportingTo,
     } = req.body;
-
-    if (!employeeId || !name || !email || !role || !password)
-      return res.status(400).json({ message: "Missing required fields" });
-
-    const existingUser = await User.findOne({ email });
-    if (existingUser)
-      return res.status(400).json({ message: "Email already exists" });
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -147,49 +139,44 @@ export const createUser = async (req, res) => {
       designation: designation || "",
       phone: phone || "",
       joining_date: joining_date || "",
+      reportingTo: reportingTo || null,
       profileImage: req.file ? `uploads/${req.file.filename}` : "",
     });
 
     await newUser.save();
-    const io = req.app.get("io");
+
 
     // ✅ 1. Welcome Notification for New User
-    if (io) {
-      await sendNotification({
-        receiverIds: newUser._id,
-        senderId: req.user ? req.user._id : newUser._id,
-        title: "Welcome to Wordlane Tech! 🚀",
-        message: `Hi ${name}, your account has been successfully created.`,
-        type: "general",
-        link: "/profile",
-        io,
-      });
-    }
+    await sendNotification({
+      receiverIds: newUser._id,
+      senderId: req.user ? req.user._id : newUser._id,
+      title: "Welcome to Wordlane Tech! 🚀",
+      message: `Hi ${name}, your account has been successfully created.`,
+      type: "general",
+      link: "/profile",
+    });
 
     // ✅ 2. Notify ALL ADMINS (Oversight)
-    if (io) {
-      try {
-        const admins = await User.find({ role: "admin" }).select("_id");
-        const adminIds = admins.map((admin) => admin._id);
+    try {
+      const admins = await User.find({ role: "admin" }).select("_id");
+      const adminIds = admins.map((admin) => admin._id);
 
-        // Filter out the admin who created the user (optional, but good UX)
-        const adminTargets = adminIds.filter((id) => id.toString() !== req.user._id.toString());
+      // Filter out the admin who created the user (optional, but good UX)
+      const adminTargets = adminIds.filter((id) => id.toString() !== req.user._id.toString());
 
-        if (adminTargets.length > 0) {
-          await sendNotification({
-            receiverIds: adminTargets,
-            senderId: req.user._id,
-            title: "New Employee Added 👤",
-            message: `${name} (Role: ${role}) has joined the company.`,
-            type: "general",
-            priority: "normal",
-            link: "/employees",
-            io,
-          });
-        }
-      } catch (err) {
-        console.error("Error notifying admins for new user:", err);
+      if (adminTargets.length > 0) {
+        await sendNotification({
+          receiverIds: adminTargets,
+          senderId: req.user._id,
+          title: "New Employee Added 👤",
+          message: `${name} (Role: ${role}) has joined the company.`,
+          type: "general",
+          priority: "normal",
+          link: "/employees",
+        });
       }
+    } catch (err) {
+      console.error("Error notifying admins for new user:", err);
     }
 
     res.status(201).json({ message: "User created", user: newUser });
@@ -215,14 +202,15 @@ export const getUsers = async (req, res) => {
   }
 };
 
-// ---------------- GET ONLY MANAGERS ----------------
+// ---------------- GET ALL POTENTIAL SUPERVISORS ----------------
 export const getManagers = async (req, res) => {
   try {
-    const managers = await User.find({ role: "manager" }).select("-password");
-    res.status(200).json(managers);
+    // Return all users as anyone can be a supervisor
+    const supervisors = await User.find({}).select("name designation role employeeId profileImage");
+    res.status(200).json(supervisors);
   } catch (error) {
-    console.error("Error fetching managers:", error);
-    res.status(500).json({ message: "Server error while fetching managers" });
+    console.error("Error fetching supervisors:", error);
+    res.status(500).json({ message: "Server error while fetching potential supervisors" });
   }
 };
 
@@ -257,7 +245,7 @@ export const updateUser = async (req, res) => {
     return res.status(400).json({ message: "Invalid ID" });
 
   try {
-    const io = req.app.get("io"); // Get Socket Instance
+
 
     // Find the user first
     console.log("Finding user with ID:", id);
@@ -296,6 +284,7 @@ export const updateUser = async (req, res) => {
         "dob",
         "gender",
         "joining_date",
+        "reportingTo",
       ];
 
       fields.forEach((field) => {
@@ -344,16 +333,13 @@ export const updateUser = async (req, res) => {
     // ✅ Send Notification: Profile Updated
     // Only notify if someone else updated the user, OR if it's a password reset etc.
     // Usually, we notify the user whose profile was updated.
-    if (io) {
-      await sendNotification({
-        receiverIds: id,
-        senderId: req.user._id,
-        title: "Profile Updated 📝",
-        message: `Your profile information has been updated by ${req.user.name || "Admin"}.`,
-        type: "general",
-        io,
-      });
-    }
+    await sendNotification({
+      receiverIds: id,
+      senderId: req.user._id,
+      title: "Profile Updated 📝",
+      message: `Your profile information has been updated by ${req.user.name || "Admin"}.`,
+      type: "general",
+    });
 
     res.json({ message: "User updated successfully", user: updatedUser });
   } catch (err) {
@@ -386,7 +372,7 @@ export const deleteUser = async (req, res) => {
     return res.status(400).json({ message: "Invalid ID" });
 
   try {
-    const io = req.app.get("io"); // Get Socket Instance
+
 
     const user = await User.findById(id);
     if (!user) return res.status(404).json({ message: "User not found" });
@@ -405,7 +391,7 @@ export const deleteUser = async (req, res) => {
 
     // ✅ Send Notification: User Deleted
     // Notify all Admins and HRs that a user has been removed (excluding the one who deleted)
-    if (io) {
+    try {
       const admins = await User.find({ role: { $in: ["admin", "hr"] } }).select("_id");
       // Filter out the user who performed the delete action
       const notifyList = admins
@@ -420,9 +406,10 @@ export const deleteUser = async (req, res) => {
           message: `User ${userName} has been deleted from the system.`,
           priority: "high",
           type: "general",
-          io,
         });
       }
+    } catch (err) {
+      console.error("Error notifying admins for deleted user:", err);
     }
 
     res.json({ message: "User deleted" });
@@ -431,3 +418,4 @@ export const deleteUser = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
